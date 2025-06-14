@@ -1,7 +1,8 @@
-import BoardCard from "./_components/BoardCard";
+import BoardCard, { BoardCardProps } from './_components/BoardCard';
+
 
 export default function DashboardPage() {
-  const teamBoards = [
+  const teamBoards: BoardCardProps[] = [
     {
       id: 'new-board',
       type: 'new',

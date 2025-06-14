@@ -3,7 +3,7 @@ import Image from 'next/image';
 import { StarIcon } from '@heroicons/react/24/outline'; // Install heroicons if you don't have it: npm install @heroicons/react
 import Link from 'next/link';
 
-interface BoardCardProps {
+export interface BoardCardProps {
   id: string;
   type: 'new' | 'existing';
   title: string;

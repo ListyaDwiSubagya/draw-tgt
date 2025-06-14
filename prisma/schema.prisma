@@ -1,0 +1,39 @@
+model Organization {
+  id        String                 @id @default(cuid())
+  name      String
+  ownerId   String
+  members   OrganizationMember[]
+  boards    Board[]
+  createdAt DateTime              @default(now())
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   // "OWNER", "MEMBER"
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+}
+
+model Board {
+  id             String   @id @default(cuid())
+  title          String
+  imageUrl       String?
+  createdBy      String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  favorites      FavoriteBoard[]
+}
+
+model FavoriteBoard {
+  id       String   @id @default(cuid())
+  userId   String
+  boardId  String
+  createdAt DateTime @default(now())
+
+  board    Board @relation(fields: [boardId], references: [id])
+}
