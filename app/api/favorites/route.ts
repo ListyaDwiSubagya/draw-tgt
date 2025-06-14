@@ -10,22 +10,20 @@ export async function POST(req: Request) {
     return new NextResponse("Missing fields", { status: 400 });
   }
 
-  const exists = await prisma.favoriteBoard.findFirst({
-    where: {
-      userId,
-      boardId,
-    },
+  const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+  if (!user) return new NextResponse("User not found", { status: 404 });
+
+  const exists = await prisma.favorite.findFirst({
+    where: { userId: user.id, boardId },
   });
 
   if (exists) {
-    await prisma.favoriteBoard.delete({
-      where: { id: exists.id },
-    });
+    await prisma.favorite.delete({ where: { id: exists.id } });
     return NextResponse.json({ status: "unfavorited" });
   } else {
-    await prisma.favoriteBoard.create({
+    await prisma.favorite.create({
       data: {
-        userId,
+        userId: user.id,
         boardId,
       },
     });

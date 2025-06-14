@@ -4,25 +4,30 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   const { userId } = await auth();
-  const body = await req.json();
-  const { name } = body;
+  const { name } = await req.json();
 
   if (!userId || !name) {
     return new NextResponse("Unauthorized or missing fields", { status: 400 });
   }
 
+  const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+
+  if (!user) {
+    return new NextResponse("User not found", { status: 404 });
+  }
+
   const organization = await prisma.organization.create({
     data: {
       name,
-      ownerId: userId,
+      ownerId: user.id,
       members: {
         create: {
-          userId,
+          user: { connect: { id: user.id } },
           role: "OWNER",
         },
       },
     },
-  });
+  });  
 
   return NextResponse.json(organization);
 }

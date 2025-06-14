@@ -8,17 +8,21 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  email     String
-  favorites Favorite[]
-  boards    Board[]  @relation("UserBoards")
+  id          String   @id @default(cuid())
+  clerkId     String   @unique
+  email       String
+  favorites   Favorite[]
+  boards      Board[]  @relation("UserBoards")
   organizations OrganizationMember[]
+  organizationsOwned Organization[] @relation("UserOwnsOrganizations")
+  boardsCreated      Board[]        @relation("UserCreatesBoards")
 }
 
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  ownerId   String
+  owner     User     @relation("UserOwnsOrganizations", fields: [ownerId], references: [id])
   members   OrganizationMember[]
   boards    Board[]
 }
@@ -27,6 +31,7 @@ model OrganizationMember {
   id             String   @id @default(cuid())
   userId         String
   organizationId String
+  role           String
   user           User     @relation(fields: [userId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
 }
@@ -36,6 +41,8 @@ model Board {
   title          String
   imageUrl       String?
   organizationId String?
+  createdById    String
+  createdBy      User     @relation("UserCreatesBoards", fields: [createdById], references: [id])
   organization   Organization? @relation(fields: [organizationId], references: [id])
   users          User[]   @relation("UserBoards")
   favorites      Favorite[]

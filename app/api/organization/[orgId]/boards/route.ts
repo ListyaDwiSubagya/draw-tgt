@@ -8,30 +8,25 @@ interface Params {
 
 export async function POST(req: Request, { params }: Params) {
   const { userId } = await auth();
-  const { title, imageUrl } = await req.json();
   const { orgId } = params;
+  const { title, imageUrl } = await req.json();
 
   if (!userId || !title || !orgId) {
-    return new NextResponse("Missing required fields", { status: 400 });
+    return new NextResponse("Missing fields", { status: 400 });
   }
 
-  const isMember = await prisma.organizationMember.findFirst({
-    where: {
-      organizationId: orgId,
-      userId,
-    },
-  });
-
-  if (!isMember) {
-    return new NextResponse("Unauthorized", { status: 403 });
-  }
+  const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+  if (!user) return new NextResponse("User not found", { status: 404 });
 
   const board = await prisma.board.create({
     data: {
       title,
       imageUrl,
       organizationId: orgId,
-      createdBy: userId,
+      createdById: user.id,
+      users: {
+        connect: { id: user.id },
+      },
     },
   });
 

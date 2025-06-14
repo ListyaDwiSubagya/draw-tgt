@@ -8,26 +8,30 @@ interface Params {
 
 export async function POST(req: Request, { params }: Params) {
   const { userId } = await auth();
+  const { inviteeClerkId, role = "MEMBER" } = await req.json();
   const { orgId } = params;
-  const { inviteeId, role = "MEMBER" } = await req.json();
 
-  if (!userId || !inviteeId || !orgId) {
+  if (!userId || !inviteeClerkId || !orgId) {
     return new NextResponse("Missing parameters", { status: 400 });
   }
 
+  const owner = await prisma.user.findUnique({ where: { clerkId: userId } });
+  const invitee = await prisma.user.findUnique({ where: { clerkId: inviteeClerkId } });
+
+  if (!owner || !invitee) return new NextResponse("User(s) not found", { status: 404 });
+
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
-    include: { members: true },
   });
 
-  if (!org || org.ownerId !== userId) {
+  if (!org || org.ownerId !== owner.id) {
     return new NextResponse("Unauthorized", { status: 403 });
   }
 
   const invited = await prisma.organizationMember.create({
     data: {
       organizationId: orgId,
-      userId: inviteeId,
+      userId: invitee.id,
       role,
     },
   });
