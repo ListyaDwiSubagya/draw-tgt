@@ -14,7 +14,7 @@ export interface BoardCardProps {
 export default function BoardCard({ id, type, title, imageUrl, subtitle }: BoardCardProps) {
   if (type === 'new') {
     return (
-      <Link href="/board">
+      <Link href="/board/board">
         <div className="relative flex flex-col items-center justify-center bg-blue-600 rounded-lg shadow-md cursor-pointer
                         h-48 w-full p-4 overflow-hidden
                         hover:bg-blue-700 transition-colors duration-200">
