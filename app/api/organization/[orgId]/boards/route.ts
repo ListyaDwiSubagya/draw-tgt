@@ -1,5 +1,4 @@
-// app/api/organization/[orgId]/boards/route.ts
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
@@ -8,7 +7,7 @@ interface Params {
 }
 
 export async function POST(req: Request, { params }: Params) {
-  const { userId } = auth();
+  const { userId } = await auth();
   const { title, imageUrl } = await req.json();
   const { orgId } = params;
 

@@ -174,3 +174,6 @@ dist
 
 # End of https://www.toptal.com/developers/gitignore/api/nextjs,node
 /lib/generated/prisma
+
+# clerk configuration (can include secrets)
+/.clerk/

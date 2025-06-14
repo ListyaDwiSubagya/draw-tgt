@@ -1,19 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String
+  favorites Favorite[]
+  boards    Board[]  @relation("UserBoards")
+  organizations OrganizationMember[]
+}
+
 model Organization {
-  id        String                 @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  ownerId   String
   members   OrganizationMember[]
   boards    Board[]
-  createdAt DateTime              @default(now())
 }
 
 model OrganizationMember {
   id             String   @id @default(cuid())
-  organizationId String
   userId         String
-  role           String   // "OWNER", "MEMBER"
-  createdAt      DateTime @default(now())
-
+  organizationId String
+  user           User     @relation(fields: [userId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
 }
 
@@ -21,19 +35,16 @@ model Board {
   id             String   @id @default(cuid())
   title          String
   imageUrl       String?
-  createdBy      String
-  organizationId String
-  createdAt      DateTime @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  favorites      FavoriteBoard[]
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  users          User[]   @relation("UserBoards")
+  favorites      Favorite[]
 }
 
-model FavoriteBoard {
-  id       String   @id @default(cuid())
-  userId   String
-  boardId  String
-  createdAt DateTime @default(now())
-
-  board    Board @relation(fields: [boardId], references: [id])
+model Favorite {
+  id      String @id @default(cuid())
+  userId  String
+  boardId String
+  user    User   @relation(fields: [userId], references: [id])
+  board   Board  @relation(fields: [boardId], references: [id])
 }

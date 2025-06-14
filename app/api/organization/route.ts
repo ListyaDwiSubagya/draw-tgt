@@ -1,9 +1,9 @@
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { userId } = auth();
+  const { userId } = await auth();
   const body = await req.json();
   const { name } = body;
 

@@ -1,10 +1,9 @@
-// app/api/favorites/route.ts
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { userId } = auth();
+  const { userId } = await auth();
   const { boardId } = await req.json();
 
   if (!userId || !boardId) {
@@ -19,7 +18,6 @@ export async function POST(req: Request) {
   });
 
   if (exists) {
-    // Unfavorite
     await prisma.favoriteBoard.delete({
       where: { id: exists.id },
     });
