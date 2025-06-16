@@ -13,8 +13,6 @@ export async function POST(req: Request) {
 
   const user = await ensureUserExists(userId); 
 
-  console.log("🧪 userId from Clerk:", userId);
-
   const organization = await prisma.organization.create({
     data: {
       name,
@@ -29,4 +27,26 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(organization);
+}
+
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return new NextResponse("Unauthorized", { status: 401 });
+
+  const user = await ensureUserExists(userId);
+
+  const organizations = await prisma.organization.findMany({
+    where: {
+      members: {
+        some: {
+          userId: user.id,
+        },
+      },
+    },
+    include: {
+      boards: true, 
+    },
+  });
+
+  return NextResponse.json(organizations);
 }
