@@ -1,9 +1,10 @@
 // canvas.tsx
 "use client";
 
+import { useParams } from "next/navigation";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Link as LinkIcon } from "lucide-react";
-import { Type, Square, Circle, PencilLine, Undo, Redo } from 'lucide-react'; 
+import { Type, Square, Circle, PencilLine, Undo, Redo } from "lucide-react";
 import { Poppins } from "next/font/google";
 import { Participans } from "./participans";
 import { Info } from "./info";
@@ -28,9 +29,9 @@ export type CanvasState =
   | { mode: CanvasMode.None }
   | { mode: CanvasMode.Pressing; origin: Point } // Poin asal saat menekan
   | { mode: CanvasMode.Pencil; currentStroke: Stroke } // Goresan saat ini yang sedang digambar
-  | { mode: CanvasMode.Text; } // Mode teks
-  | { mode: CanvasMode.Rectangle; } // Mode persegi panjang
-  | { mode: CanvasMode.Circle; }; // Mode lingkaran
+  | { mode: CanvasMode.Text } // Mode teks
+  | { mode: CanvasMode.Rectangle } // Mode persegi panjang
+  | { mode: CanvasMode.Circle }; // Mode lingkaran
 
 // Mendefinisikan status gambar lengkap yang akan disimpan dalam riwayat.
 export interface DrawingState {
@@ -50,7 +51,8 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "board" | "default" | "tool";
 }
 const Button = ({ children, variant, className, ...props }: ButtonProps) => {
-  const baseClasses = "flex items-center justify-center rounded-md transition-colors";
+  const baseClasses =
+    "flex items-center justify-center rounded-md transition-colors";
   const variantClasses = {
     board: "bg-transparent hover:bg-neutral-100",
     default: "bg-blue-500 text-white hover:bg-blue-600",
@@ -58,7 +60,11 @@ const Button = ({ children, variant, className, ...props }: ButtonProps) => {
   };
   return (
     <button
-      className={cn(baseClasses, variantClasses[variant || "default"], className)}
+      className={cn(
+        baseClasses,
+        variantClasses[variant || "default"],
+        className
+      )}
       {...props}
     >
       {children}
@@ -75,7 +81,13 @@ interface ImageProps {
   className?: string;
 }
 const Image = ({ src, alt, height, width, className }: ImageProps) => (
-  <img src={src} alt={alt} height={height} width={width} className={className} />
+  <img
+    src={src}
+    alt={alt}
+    height={height}
+    width={width}
+    className={className}
+  />
 );
 
 // Mock untuk komponen Next.js Link.
@@ -96,7 +108,6 @@ const Link = ({ href, children, className }: LinkProps) => (
 const TabSeparator = () => {
   return <div className="text-neutral-300 px-1.5">|</div>;
 };
-
 
 /**
  * Mock Participans component untuk merepresentasikan daftar pengguna aktif di kanvas.
@@ -119,7 +130,6 @@ interface ToolbarProps {
  * Diposisikan sebagai bilah samping vertikal di kiri, seperti pada gambar.
  */
 
-
 const Toolbar = ({
   canvasState,
   setCanvasState,
@@ -131,16 +141,30 @@ const Toolbar = ({
   return (
     <div className="absolute top-1/2 left-2 -translate-y-1/2 bg-white rounded-md p-2 flex flex-col items-center shadow-md space-y-2">
       {/* Tombol Alat */}
-      <Button variant="tool" onClick={() => setCanvasState({ mode: CanvasMode.Text })}>
+      <Button
+        variant="tool"
+        onClick={() => setCanvasState({ mode: CanvasMode.Text })}
+      >
         <Type className="h-5 w-5" />
       </Button>
-      <Button variant="tool" onClick={() => setCanvasState({ mode: CanvasMode.Rectangle })}>
+      <Button
+        variant="tool"
+        onClick={() => setCanvasState({ mode: CanvasMode.Rectangle })}
+      >
         <Square className="h-5 w-5" />
       </Button>
-      <Button variant="tool" onClick={() => setCanvasState({ mode: CanvasMode.Circle })}>
+      <Button
+        variant="tool"
+        onClick={() => setCanvasState({ mode: CanvasMode.Circle })}
+      >
         <Circle className="h-5 w-5" />
       </Button>
-      <Button variant="tool" onClick={() => setCanvasState({ mode: CanvasMode.Pencil, currentStroke: [] })}>
+      <Button
+        variant="tool"
+        onClick={() =>
+          setCanvasState({ mode: CanvasMode.Pencil, currentStroke: [] })
+        }
+      >
         <PencilLine className="h-5 w-5" />
       </Button>
 
@@ -152,7 +176,10 @@ const Toolbar = ({
         variant="tool"
         onClick={undo}
         disabled={!canUndo}
-        className={cn("bg-gray-200", !canUndo && "opacity-50 cursor-not-allowed")}
+        className={cn(
+          "bg-gray-200",
+          !canUndo && "opacity-50 cursor-not-allowed"
+        )}
       >
         <Undo className="h-5 w-5" />
       </Button>
@@ -160,7 +187,10 @@ const Toolbar = ({
         variant="tool"
         onClick={redo}
         disabled={!canRedo}
-        className={cn("bg-gray-200", !canRedo && "opacity-50 cursor-not-allowed")}
+        className={cn(
+          "bg-gray-200",
+          !canRedo && "opacity-50 cursor-not-allowed"
+        )}
       >
         <Redo className="h-5 w-5" />
       </Button>
@@ -173,7 +203,6 @@ const Toolbar = ({
     </div>
   );
 };
-
 
 export const Canvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -210,7 +239,8 @@ export const Canvas = () => {
       // Mengatur dimensi kanvas untuk mengisi induk
       const setCanvasDimensions = () => {
         canvas.width = canvas.parentElement?.clientWidth || window.innerWidth;
-        canvas.height = canvas.parentElement?.clientHeight || window.innerHeight;
+        canvas.height =
+          canvas.parentElement?.clientHeight || window.innerHeight;
         // Menggambar ulang konten setelah mengubah ukuran
         redrawCanvas();
       };
@@ -258,7 +288,10 @@ export const Canvas = () => {
     });
 
     // Jika saat ini sedang menggambar, gambar juga `currentStroke` dari `canvasState`
-    if (canvasState.mode === CanvasMode.Pencil && canvasState.currentStroke.length > 0) {
+    if (
+      canvasState.mode === CanvasMode.Pencil &&
+      canvasState.currentStroke.length > 0
+    ) {
       const currentStroke = canvasState.currentStroke;
       ctx.beginPath();
       ctx.moveTo(currentStroke[0].x, currentStroke[0].y);
@@ -275,15 +308,18 @@ export const Canvas = () => {
    * status "masa depan" (yang telah di-redo) dari riwayat.
    * @param newDrawingState DrawingState untuk ditambahkan ke riwayat.
    */
-  const addStateToHistory = useCallback((newDrawingState: DrawingState) => {
-    setHistory((prevHistory) => {
-      // Jika kita tidak berada di akhir riwayat (berarti undo telah digunakan),
-      // potong riwayat untuk membuang status "masa depan" sebelum menambahkan yang baru.
-      const newHistory = prevHistory.slice(0, historyIndex + 1);
-      return [...newHistory, newDrawingState];
-    });
-    setHistoryIndex((prevIndex) => prevIndex + 1);
-  }, [historyIndex]);
+  const addStateToHistory = useCallback(
+    (newDrawingState: DrawingState) => {
+      setHistory((prevHistory) => {
+        // Jika kita tidak berada di akhir riwayat (berarti undo telah digunakan),
+        // potong riwayat untuk membuang status "masa depan" sebelum menambahkan yang baru.
+        const newHistory = prevHistory.slice(0, historyIndex + 1);
+        return [...newHistory, newDrawingState];
+      });
+      setHistoryIndex((prevIndex) => prevIndex + 1);
+    },
+    [historyIndex]
+  );
 
   /**
    * Mengurungkan tindakan terakhir dengan mengembalikan status gambar ke yang sebelumnya dalam riwayat.
@@ -296,6 +332,38 @@ export const Canvas = () => {
       setCanvasState({ mode: CanvasMode.None }); // Mengatur ulang mode interaksi
     }
   }, [history, historyIndex]);
+
+  const params = useParams();
+  const boardId = params?.board as string;
+
+  useEffect(() => {
+    const load = async () => {
+      const res = await fetch(`/api/board/${boardId}/save`);
+      if (res.ok) {
+        const { drawing } = await res.json();
+        if (drawing) {
+          setDrawingState(drawing);
+          setHistory([drawing]);
+          setHistoryIndex(0);
+        }
+      }
+    };
+    load();
+  }, [boardId]);
+
+  useEffect(() => {
+    if (historyIndex >= 0) {
+      const t = setTimeout(() => {
+        fetch(`/api/board/${boardId}/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ drawing: drawingState }),
+        }).catch(console.error);
+      }, 1000);
+
+      return () => clearTimeout(t);
+    }
+  }, [drawingState, boardId, historyIndex]);
 
   /**
    * Mengulang tindakan yang dibatalkan dengan bergerak maju dalam array riwayat.
@@ -372,7 +440,10 @@ export const Canvas = () => {
         if (completedStroke.length > 0) {
           // Tambahkan goresan yang telah selesai ke drawingState
           const newDrawingState: DrawingState = {
-            completedStrokes: [...drawingState.completedStrokes, completedStroke],
+            completedStrokes: [
+              ...drawingState.completedStrokes,
+              completedStroke,
+            ],
           };
           setDrawingState(newDrawingState); // Perbarui status gambar utama
           addStateToHistory(newDrawingState); // Tambahkan ke riwayat
@@ -384,9 +455,7 @@ export const Canvas = () => {
   );
 
   return (
-    <main
-      className="h-screen w-screen relative bg-neutral-100 touch-none overflow-hidden"
-    >
+    <main className="h-screen w-screen relative bg-neutral-100 touch-none overflow-hidden">
       {/* Kanvas untuk menggambar */}
       <canvas
         ref={canvasRef}
@@ -398,9 +467,9 @@ export const Canvas = () => {
         width={0} // Akan diperbarui secara dinamis oleh useEffect
         height={0} // Akan diperbarui secara dinamis oleh useEffect
         style={{
-          width: '100%',
-          height: '100%',
-          touchAction: 'none' // Mencegah tindakan sentuh default seperti scrolling/zooming
+          width: "100%",
+          height: "100%",
+          touchAction: "none", // Mencegah tindakan sentuh default seperti scrolling/zooming
         }}
       />
 
