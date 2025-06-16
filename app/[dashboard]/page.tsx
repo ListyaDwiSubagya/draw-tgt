@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import BoardCard, { BoardCardProps } from "./_components/BoardCard";
 
 export default function DashboardPage() {
@@ -16,6 +16,35 @@ export default function DashboardPage() {
       imageUrl: "",
     },
   ]);
+
+  useEffect(() => {
+    const fetchBoards = async () => {
+      if (!orgId) return;
+
+      try {
+        const res = await fetch(`/api/organization/${orgId}/boards`);
+        if (!res.ok) throw new Error("Failed to fetch boards");
+
+        const data = await res.json();
+
+        const boardList: BoardCardProps[] = data.map((board: any) => ({
+          id: board.id,
+          type: "existing",
+          title: board.title,
+          imageUrl: board.imageUrl || "",
+        }));
+
+        setBoards((prev) => [
+          { id: "new-board", type: "new", title: "New board", imageUrl: "" },
+          ...boardList,
+        ]);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchBoards();
+  }, [orgId]);
 
   const handleAddBoard = async () => {
     if (!orgId) {
@@ -43,13 +72,14 @@ export default function DashboardPage() {
       const newBoard = await res.json();
 
       setBoards((prev) => [
-        ...prev,
+        prev[0], 
         {
           id: newBoard.id,
           type: "existing",
           title: newBoard.title,
           imageUrl: newBoard.imageUrl || "",
         },
+        ...prev.slice(1),
       ]);
     } catch (err) {
       console.error(err);

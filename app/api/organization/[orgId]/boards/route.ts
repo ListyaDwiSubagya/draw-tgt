@@ -28,3 +28,20 @@ export async function POST(req: Request, { params }: { params: { orgId: string }
 
   return NextResponse.json(board);
 }
+
+export async function GET(req: Request, { params }: { params: { orgId: string } }) {
+  const { userId } = await auth();
+  const { orgId } = params;
+
+  if (!userId || !orgId) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const boards = await prisma.board.findMany({
+    where: {
+      organizationId: orgId,
+    }
+  });
+
+  return NextResponse.json(boards);
+}

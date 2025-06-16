@@ -41,10 +41,12 @@ export const OrgSidebar = () => {
 
   return (
     <div className="hidden lg:flex flex-col space-y-6 w-[240px] pl-5 pt-5 overflow-y-auto">
-      <Link href="/">
+      <Link href="/dashboard">
         <div className="flex items-center gap-x-2">
           <Image alt="" height={60} width={60} src="/logo.svg" />
-          <span className={cn("font-semibold text-2xl", font.className)}>Board</span>
+          <span className={cn("font-semibold text-2xl", font.className)}>
+            Board
+          </span>
         </div>
       </Link>
 
@@ -55,7 +57,7 @@ export const OrgSidebar = () => {
           size="lg"
           className="font-normal justify-start px-2 w-full"
         >
-          <Link href="/">
+          <Link href="/dashboard/teams">
             <LayoutDashboard className="h-4 w-4 mr-2" />
             Team boards
           </Link>
