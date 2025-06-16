@@ -1,24 +1,33 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import BoardCard, { BoardCardProps } from './_components/BoardCard';
+import BoardCard, { BoardCardProps } from "./_components/BoardCard";
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const orgId = searchParams.get("orgId");
+
   const [boards, setBoards] = useState<BoardCardProps[]>([
     {
-      id: 'new-board',
-      type: 'new',
-      title: 'New board',
-      imageUrl: '',
+      id: "new-board",
+      type: "new",
+      title: "New board",
+      imageUrl: "",
     },
   ]);
 
   const handleAddBoard = async () => {
+    if (!orgId) {
+      alert("Please select a team first.");
+      return;
+    }
+
     const title = prompt("Enter board title:");
     if (!title) return;
 
     try {
-      const res = await fetch(`/api/organization/<orgId>/boards`, {
+      const res = await fetch(`/api/organization/${orgId}/boards`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
