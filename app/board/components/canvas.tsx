@@ -4,17 +4,20 @@ import Toolbar from "./toolbar";
 import { Info } from "./info";
 import { Participans } from "./participans";
 import { CanvasMode, Point, CanvasState } from "./types";
+import { useParams } from "next/navigation";
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [canvasState, setCanvasState] = useState<CanvasState>({ 
-    mode: CanvasMode.None 
+  const [canvasState, setCanvasState] = useState<CanvasState>({
+    mode: CanvasMode.None,
   });
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingHistory, setDrawingHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
-  // Initialize canvas
+  const params = useParams();
+  const boardId = params?.board as string;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -33,9 +36,38 @@ export default function Canvas() {
 
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
-
     return () => window.removeEventListener("resize", resizeCanvas);
   }, []);
+
+  useEffect(() => {
+    if (!boardId) return;
+
+    const fetchDrawing = async () => {
+      const res = await fetch(`/api/board/${boardId}/save`);
+      const data = await res.json();
+      const imgData = data.drawing;
+
+      if (!imgData) return;
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0);
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setDrawingHistory([imageData]);
+        setHistoryIndex(0);
+      };
+      img.src = imgData;
+    };
+
+    fetchDrawing();
+  }, [boardId]);
 
   const saveToHistory = useCallback(() => {
     const canvas = canvasRef.current;
@@ -45,14 +77,32 @@ export default function Canvas() {
     if (!ctx) return;
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setDrawingHistory(prev => [...prev.slice(0, historyIndex + 1), imageData]);
-    setHistoryIndex(prev => prev + 1);
+    setDrawingHistory((prev) => [...prev.slice(0, historyIndex + 1), imageData]);
+    setHistoryIndex((prev) => prev + 1);
   }, [historyIndex]);
+
+  const exportCanvasAsImage = (): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    return canvas.toDataURL("image/png");
+  };
+
+  const autoSaveDrawing = async () => {
+    const dataUrl = exportCanvasAsImage();
+    if (!dataUrl) return;
+
+    await fetch(`/api/board/${boardId}/save`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ drawing: dataUrl }),
+    });
+  };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -67,13 +117,13 @@ export default function Canvas() {
       ctx.moveTo(x, y);
       setCanvasState({
         mode: CanvasMode.Pencil,
-        currentStroke: [{ x, y }]
+        currentStroke: [{ x, y }],
       });
     } else {
       setCanvasState({
         mode: canvasState.mode,
         origin: { x, y },
-        currentPosition: { x, y }
+        currentPosition: { x, y },
       });
     }
   };
@@ -83,7 +133,6 @@ export default function Canvas() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -91,28 +140,27 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Clear canvas for preview
-    if (historyIndex >= 0) {
-      ctx.putImageData(drawingHistory[historyIndex], 0, 0);
-    } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-
     if (canvasState.mode === CanvasMode.Pencil) {
       if (canvasState.currentStroke) {
+        const prev = canvasState.currentStroke[canvasState.currentStroke.length - 1];
         ctx.beginPath();
-        ctx.moveTo(canvasState.currentStroke[0].x, canvasState.currentStroke[0].y);
+        ctx.moveTo(prev.x, prev.y);
         ctx.lineTo(x, y);
         ctx.stroke();
-        
-        setCanvasState(prev => ({
+
+        setCanvasState((prev) => ({
           ...prev,
-          currentStroke: [...prev.currentStroke!, { x, y }]
+          currentStroke: [...prev.currentStroke!, { x, y }],
         }));
       }
-    } 
-    else if (canvasState.origin) {
-      if (canvasState.mode === CanvasMode.Rectangle) {
+    } else {
+      if (historyIndex >= 0) {
+        ctx.putImageData(drawingHistory[historyIndex], 0, 0);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (canvasState.mode === CanvasMode.Rectangle && canvasState.origin) {
         ctx.beginPath();
         ctx.rect(
           canvasState.origin.x,
@@ -121,34 +169,28 @@ export default function Canvas() {
           y - canvasState.origin.y
         );
         ctx.stroke();
-      } 
-      else if (canvasState.mode === CanvasMode.Circle) {
+      } else if (canvasState.mode === CanvasMode.Circle && canvasState.origin) {
         const radius = Math.sqrt(
-          Math.pow(x - canvasState.origin.x, 2) + 
-          Math.pow(y - canvasState.origin.y, 2)
+          Math.pow(x - canvasState.origin.x, 2) +
+            Math.pow(y - canvasState.origin.y, 2)
         );
         ctx.beginPath();
-        ctx.arc(
-          canvasState.origin.x,
-          canvasState.origin.y,
-          radius,
-          0,
-          Math.PI * 2
-        );
+        ctx.arc(canvasState.origin.x, canvasState.origin.y, radius, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      setCanvasState(prev => ({
+      setCanvasState((prev) => ({
         ...prev,
-        currentPosition: { x, y }
+        currentPosition: { x, y },
       }));
     }
   };
 
   const endDrawing = () => {
     if (isDrawing) {
-      saveToHistory();
       setIsDrawing(false);
+      saveToHistory();
+      autoSaveDrawing();
     }
   };
 
@@ -157,12 +199,11 @@ export default function Canvas() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     ctx.putImageData(drawingHistory[historyIndex - 1], 0, 0);
-    setHistoryIndex(prev => prev - 1);
+    setHistoryIndex((prev) => prev - 1);
   }, [drawingHistory, historyIndex]);
 
   const redo = useCallback(() => {
@@ -170,12 +211,11 @@ export default function Canvas() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     ctx.putImageData(drawingHistory[historyIndex + 1], 0, 0);
-    setHistoryIndex(prev => prev + 1);
+    setHistoryIndex((prev) => prev + 1);
   }, [drawingHistory, historyIndex]);
 
   return (
@@ -187,7 +227,7 @@ export default function Canvas() {
         onMouseUp={endDrawing}
         onMouseLeave={endDrawing}
         className="absolute inset-0 w-full h-full bg-white"
-        />
+      />
       <Toolbar
         canvasState={canvasState}
         setCanvasState={setCanvasState}
@@ -195,9 +235,9 @@ export default function Canvas() {
         canRedo={historyIndex < drawingHistory.length - 1}
         undo={undo}
         redo={redo}
-        />
-        <Info/>
-        <Participans/>
+      />
+      <Info />
+      <Participans />
     </main>
   );
 }
