@@ -1,40 +1,51 @@
-import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { currentUser } from "@clerk/nextjs/server";
 
-interface Params {
-  params: { orgId: string };
-}
+export async function POST(
+  req: Request,
+  { params }: { params: { orgId: string } }
+) {
+  const user = await currentUser();
+  if (!user)
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-export async function POST(req: Request, { params }: Params) {
-  const { userId } = await auth();
-  const { inviteeClerkId, role = "MEMBER" } = await req.json();
-  const { orgId } = params;
+  const { email } = await req.json();
+  if (!email)
+    return NextResponse.json({ message: "Email is required" }, { status: 400 });
 
-  if (!userId || !inviteeClerkId || !orgId) {
-    return new NextResponse("Missing parameters", { status: 400 });
-  }
-
-  const owner = await prisma.user.findUnique({ where: { clerkId: userId } });
-  const invitee = await prisma.user.findUnique({ where: { clerkId: inviteeClerkId } });
-
-  if (!owner || !invitee) return new NextResponse("User(s) not found", { status: 404 });
+  const invitedUser = await prisma.user.findUnique({ where: { email } });
+  if (!invitedUser)
+    return NextResponse.json({ message: "User not found" }, { status: 404 });
 
   const org = await prisma.organization.findUnique({
-    where: { id: orgId },
+    where: { id: params.orgId },
   });
+  if (!org)
+    return NextResponse.json(
+      { message: "No organization found" },
+      { status: 404 }
+    );
 
-  if (!org || org.ownerId !== owner.id) {
-    return new NextResponse("Unauthorized", { status: 403 });
-  }
+  const isAlreadyMember = await prisma.organizationMember.findFirst({
+    where: {
+      userId: invitedUser.id,
+      organizationId: org.id,
+    },
+  });
+  if (isAlreadyMember)
+    return NextResponse.json(
+      { message: "User already in organization" },
+      { status: 400 }
+    );
 
-  const invited = await prisma.organizationMember.create({
+  await prisma.organizationMember.create({
     data: {
-      organizationId: orgId,
-      userId: invitee.id,
-      role,
+      userId: invitedUser.id,
+      organizationId: org.id,
+      role: "MEMBER",
     },
   });
 
-  return NextResponse.json(invited);
+  return NextResponse.json({ message: "User invited" });
 }

@@ -1,10 +1,13 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
+import io from "socket.io-client";
 import Toolbar from "./toolbar";
 import { Info } from "./info";
 import { Participans } from "./participans";
 import { CanvasMode, Point, CanvasState } from "./types";
 import { useParams } from "next/navigation";
+
+let socket: any;
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -17,6 +20,26 @@ export default function Canvas() {
 
   const params = useParams();
   const boardId = params?.board as string;
+
+  useEffect(() => {
+    socket = io({ path: "/api/socket" });
+
+    socket.on("drawing", (data: { x0: number; y0: number; x1: number; y1: number }) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.beginPath();
+      ctx.moveTo(data.x0, data.y0);
+      ctx.lineTo(data.x1, data.y1);
+      ctx.stroke();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -72,7 +95,6 @@ export default function Canvas() {
   const saveToHistory = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -140,19 +162,26 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    if (canvasState.mode === CanvasMode.Pencil) {
-      if (canvasState.currentStroke) {
-        const prev = canvasState.currentStroke[canvasState.currentStroke.length - 1];
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+    if (canvasState.mode === CanvasMode.Pencil && canvasState.currentStroke) {
+      const prev = canvasState.currentStroke[canvasState.currentStroke.length - 1];
 
-        setCanvasState((prev) => ({
-          ...prev,
-          currentStroke: [...prev.currentStroke!, { x, y }],
-        }));
-      }
+      ctx.beginPath();
+      ctx.moveTo(prev.x, prev.y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+
+      // Emit ke socket
+      socket.emit("drawing", {
+        x0: prev.x,
+        y0: prev.y,
+        x1: x,
+        y1: y,
+      });
+
+      setCanvasState((prev) => ({
+        ...prev,
+        currentStroke: [...prev.currentStroke!, { x, y }],
+      }));
     } else {
       if (historyIndex >= 0) {
         ctx.putImageData(drawingHistory[historyIndex], 0, 0);
@@ -171,8 +200,7 @@ export default function Canvas() {
         ctx.stroke();
       } else if (canvasState.mode === CanvasMode.Circle && canvasState.origin) {
         const radius = Math.sqrt(
-          Math.pow(x - canvasState.origin.x, 2) +
-            Math.pow(y - canvasState.origin.y, 2)
+          Math.pow(x - canvasState.origin.x, 2) + Math.pow(y - canvasState.origin.y, 2)
         );
         ctx.beginPath();
         ctx.arc(canvasState.origin.x, canvasState.origin.y, radius, 0, Math.PI * 2);

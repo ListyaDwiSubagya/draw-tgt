@@ -10,7 +10,7 @@ datasource db {
 model User {
   id          String   @id @default(cuid())
   clerkId     String   @unique
-  email       String
+  email       String   @unique
   favorites   Favorite[]
   boards      Board[]  @relation("UserBoards")
   organizations OrganizationMember[]
