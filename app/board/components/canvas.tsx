@@ -8,16 +8,20 @@ import { useParams } from "next/navigation";
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [canvasState, setCanvasState] = useState<CanvasState>({
-    mode: CanvasMode.None,
+  const [canvasState, setCanvasState] = useState<CanvasState>({ 
+    mode: CanvasMode.None 
   });
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingHistory, setDrawingHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [textElements, setTextElements] = useState<{text: string; position: Point}[]>([]);
+  const [arrows, setArrows] = useState<{start: Point; end: Point}[]>([]);
+  const [eraserSize, setEraserSize] = useState(20);
 
   const params = useParams();
   const boardId = params?.board as string;
 
+  // Initialize canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -31,11 +35,14 @@ export default function Canvas() {
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.strokeStyle = "#000000";
-      ctx.fillStyle = "transparent";
+      ctx.fillStyle = "#000000";
+      ctx.font = "16px Arial";
+      redrawCanvas();
     };
 
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
+
     return () => window.removeEventListener("resize", resizeCanvas);
   }, []);
 
@@ -59,6 +66,10 @@ export default function Canvas() {
       img.onload = () => {
         ctx.drawImage(img, 0, 0);
 
+        // Also fetch and restore other elements if saved
+        if (data.textElements) setTextElements(data.textElements);
+        if (data.arrows) setArrows(data.arrows);
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         setDrawingHistory([imageData]);
         setHistoryIndex(0);
@@ -77,9 +88,104 @@ export default function Canvas() {
     if (!ctx) return;
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setDrawingHistory((prev) => [...prev.slice(0, historyIndex + 1), imageData]);
-    setHistoryIndex((prev) => prev + 1);
+    setDrawingHistory(prev => [...prev.slice(0, historyIndex + 1), imageData]);
+    setHistoryIndex(prev => prev + 1);
   }, [historyIndex]);
+
+  const redrawCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Redraw from history
+    if (historyIndex >= 0) {
+      ctx.putImageData(drawingHistory[historyIndex], 0, 0);
+    }
+
+    // Redraw text elements
+    textElements.forEach(({text, position}) => {
+      ctx.fillText(text, position.x, position.y);
+    });
+
+    // Redraw arrows
+    arrows.forEach(arrow => {
+      drawArrow(ctx, arrow.start, arrow.end);
+    });
+
+    // Draw current preview
+    if (isDrawing) {
+      switch (canvasState.mode) {
+        case CanvasMode.Pencil:
+          if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(canvasState.currentStroke[0].x, canvasState.currentStroke[0].y);
+            for (let i = 1; i < canvasState.currentStroke.length; i++) {
+              ctx.lineTo(canvasState.currentStroke[i].x, canvasState.currentStroke[i].y);
+            }
+            ctx.stroke();
+          }
+          break;
+        
+        case CanvasMode.Rectangle:
+          if (canvasState.origin && canvasState.currentPosition) {
+            ctx.beginPath();
+            ctx.rect(
+              canvasState.origin.x,
+              canvasState.origin.y,
+              canvasState.currentPosition.x - canvasState.origin.x,
+              canvasState.currentPosition.y - canvasState.origin.y
+            );
+            ctx.stroke();
+          }
+          break;
+        
+        case CanvasMode.Circle:
+          if (canvasState.origin && canvasState.currentPosition) {
+            const radius = Math.sqrt(
+              Math.pow(canvasState.currentPosition.x - canvasState.origin.x, 2) + 
+              Math.pow(canvasState.currentPosition.y - canvasState.origin.y, 2)
+            );
+            ctx.beginPath();
+            ctx.arc(canvasState.origin.x, canvasState.origin.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          break;
+        
+        case CanvasMode.Arrow:
+          if (canvasState.start && canvasState.end) {
+            drawArrow(ctx, canvasState.start, canvasState.end);
+          }
+          break;
+      }
+    }
+  }, [canvasState, drawingHistory, historyIndex, isDrawing, textElements, arrows]);
+
+  const drawArrow = (ctx: CanvasRenderingContext2D, start: Point, end: Point) => {
+    // Draw line
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+
+    // Draw arrow head
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    ctx.beginPath();
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(
+      end.x - 15 * Math.cos(angle - Math.PI / 6),
+      end.y - 15 * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      end.x - 15 * Math.cos(angle + Math.PI / 6),
+      end.y - 15 * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+  };
 
   const exportCanvasAsImage = (): string | null => {
     const canvas = canvasRef.current;
@@ -96,15 +202,17 @@ export default function Canvas() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ drawing: dataUrl }),
+      body: JSON.stringify({ 
+        drawing: dataUrl,
+        textElements,
+        arrows
+      }),
     });
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -112,19 +220,39 @@ export default function Canvas() {
 
     setIsDrawing(true);
 
-    if (canvasState.mode === CanvasMode.Pencil) {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      setCanvasState({
-        mode: CanvasMode.Pencil,
-        currentStroke: [{ x, y }],
-      });
-    } else {
-      setCanvasState({
-        mode: canvasState.mode,
-        origin: { x, y },
-        currentPosition: { x, y },
-      });
+    switch (canvasState.mode) {
+      case CanvasMode.Pencil:
+        setCanvasState({
+          mode: CanvasMode.Pencil,
+          currentStroke: [{ x, y }]
+        });
+        break;
+      
+      case CanvasMode.Rectangle:
+      case CanvasMode.Circle:
+        setCanvasState({
+          mode: canvasState.mode,
+          origin: { x, y },
+          currentPosition: { x, y }
+        });
+        break;
+      
+      case CanvasMode.Arrow:
+        setCanvasState({
+          mode: CanvasMode.Arrow,
+          start: { x, y },
+          end: { x, y }
+        });
+        break;
+      
+      case CanvasMode.Text:
+        const text = prompt("Enter text:", "");
+        if (text) {
+          setTextElements(prev => [...prev, { text, position: { x, y } }])
+          saveToHistory();
+          autoSaveDrawing();
+        }
+        break;
     }
   };
 
@@ -133,6 +261,7 @@ export default function Canvas() {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -140,83 +269,160 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    if (canvasState.mode === CanvasMode.Pencil) {
-      if (canvasState.currentStroke) {
-        const prev = canvasState.currentStroke[canvasState.currentStroke.length - 1];
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-
-        setCanvasState((prev) => ({
-          ...prev,
-          currentStroke: [...prev.currentStroke!, { x, y }],
-        }));
-      }
+    // Clear and redraw from history for preview
+    if (historyIndex >= 0) {
+      ctx.putImageData(drawingHistory[historyIndex], 0, 0);
     } else {
-      if (historyIndex >= 0) {
-        ctx.putImageData(drawingHistory[historyIndex], 0, 0);
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
 
-      if (canvasState.mode === CanvasMode.Rectangle && canvasState.origin) {
-        ctx.beginPath();
-        ctx.rect(
-          canvasState.origin.x,
-          canvasState.origin.y,
-          x - canvasState.origin.x,
-          y - canvasState.origin.y
-        );
-        ctx.stroke();
-      } else if (canvasState.mode === CanvasMode.Circle && canvasState.origin) {
-        const radius = Math.sqrt(
-          Math.pow(x - canvasState.origin.x, 2) +
+    // Redraw persistent elements (text and completed arrows)
+    textElements.forEach(({text, position}) => {
+      ctx.fillText(text, position.x, position.y);
+    });
+    arrows.forEach(arrow => {
+      drawArrow(ctx, arrow.start, arrow.end);
+    });
+
+    // Handle current drawing tool
+    switch (canvasState.mode) {
+      case CanvasMode.Pencil:
+        if (canvasState.currentStroke) {
+          ctx.beginPath();
+          ctx.moveTo(canvasState.currentStroke[0].x, canvasState.currentStroke[0].y);
+          for (let i = 1; i < canvasState.currentStroke.length; i++) {
+            ctx.lineTo(canvasState.currentStroke[i].x, canvasState.currentStroke[i].y);
+          }
+          ctx.stroke();
+        }
+        setCanvasState(prev => ({
+          ...prev,
+          currentStroke: [...(prev.currentStroke || []), { x, y }]
+        }));
+        break;
+
+      case CanvasMode.Rectangle:
+        if (canvasState.origin) {
+          ctx.beginPath();
+          ctx.rect(
+            canvasState.origin.x,
+            canvasState.origin.y,
+            x - canvasState.origin.x,
+            y - canvasState.origin.y
+          );
+          ctx.stroke();
+        }
+        setCanvasState(prev => ({
+          ...prev,
+          currentPosition: { x, y }
+        }));
+        break;
+
+      case CanvasMode.Circle:
+        if (canvasState.origin) {
+          const radius = Math.sqrt(
+            Math.pow(x - canvasState.origin.x, 2) + 
             Math.pow(y - canvasState.origin.y, 2)
-        );
-        ctx.beginPath();
-        ctx.arc(canvasState.origin.x, canvasState.origin.y, radius, 0, Math.PI * 2);
-        ctx.stroke();
-      }
+          );
+          ctx.beginPath();
+          ctx.arc(
+            canvasState.origin.x,
+            canvasState.origin.y,
+            radius,
+            0,
+            Math.PI * 2
+          );
+          ctx.stroke();
+        }
+        setCanvasState(prev => ({
+          ...prev,
+          currentPosition: { x, y }
+        }));
+        break;
 
-      setCanvasState((prev) => ({
-        ...prev,
-        currentPosition: { x, y },
-      }));
+      case CanvasMode.Arrow:
+        if (canvasState.start) {
+          drawArrow(ctx, canvasState.start, { x, y });
+        }
+        setCanvasState(prev => ({
+          ...prev,
+          end: { x, y }
+        }));
+        break;
+
+      case CanvasMode.Eraser:
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(
+          x, 
+          y, 
+          eraserSize, 
+          0, 
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+        break;
     }
   };
 
   const endDrawing = () => {
-    if (isDrawing) {
-      setIsDrawing(false);
-      saveToHistory();
-      autoSaveDrawing();
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    switch (canvasState.mode) {
+      case CanvasMode.Pencil:
+        if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
+          saveToHistory();
+          autoSaveDrawing();
+        }
+        break;
+      
+      case CanvasMode.Rectangle:
+      case CanvasMode.Circle:
+        if (canvasState.origin && canvasState.currentPosition) {
+          saveToHistory();
+          autoSaveDrawing();
+        }
+        break;
+      
+      case CanvasMode.Arrow:
+        if (canvasState.start && canvasState.end) {
+          setArrows(prev => [...prev, { 
+            start: canvasState.start!, 
+            end: canvasState.end! 
+          }]);
+          saveToHistory();
+          autoSaveDrawing();
+        }
+        break;
+      
+      case CanvasMode.Eraser:
+        saveToHistory();
+        autoSaveDrawing();
+        break;
     }
+
+    setIsDrawing(false);
   };
 
   const undo = useCallback(() => {
     if (historyIndex <= 0) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.putImageData(drawingHistory[historyIndex - 1], 0, 0);
-    setHistoryIndex((prev) => prev - 1);
-  }, [drawingHistory, historyIndex]);
+    setHistoryIndex(prev => prev - 1);
+  }, [historyIndex]);
 
   const redo = useCallback(() => {
     if (historyIndex >= drawingHistory.length - 1) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    setHistoryIndex(prev => prev + 1);
+  }, [drawingHistory.length, historyIndex]);
 
-    ctx.putImageData(drawingHistory[historyIndex + 1], 0, 0);
-    setHistoryIndex((prev) => prev + 1);
-  }, [drawingHistory, historyIndex]);
+  useEffect(() => {
+    redrawCanvas();
+  }, [canvasState, drawingHistory, historyIndex, textElements, arrows, redrawCanvas]);
 
   return (
     <main className="h-screen w-screen relative bg-neutral-100 touch-none overflow-hidden">
@@ -235,6 +441,8 @@ export default function Canvas() {
         canRedo={historyIndex < drawingHistory.length - 1}
         undo={undo}
         redo={redo}
+        eraserSize={eraserSize}
+        setEraserSize={setEraserSize}
       />
       <Info />
       <Participans />
