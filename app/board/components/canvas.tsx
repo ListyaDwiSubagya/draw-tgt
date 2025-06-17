@@ -190,11 +190,6 @@ export default function Canvas() {
       ctx.fillText(text, position.x, position.y);
     });
 
-    // Redraw arrows
-    arrows.forEach((arrow) => {
-      drawArrow(ctx, arrow.start, arrow.end);
-    });
-
     // Draw current preview
     if (isDrawing) {
       switch (canvasState.mode) {
