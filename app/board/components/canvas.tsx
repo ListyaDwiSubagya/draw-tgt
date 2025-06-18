@@ -29,6 +29,10 @@ export default function Canvas() {
   const [arrows, setArrows] = useState<{ start: Point; end: Point }[]>([]);
   const [eraserSize, setEraserSize] = useState(20);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [textInput, setTextInput] = useState("");
+  const [textInputPos, setTextInputPos] = useState<Point | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
+
 
   const params = useParams();
   const boardId = params?.board as string;
@@ -366,14 +370,12 @@ export default function Canvas() {
         break;
 
       case CanvasMode.Text:
-        const text = prompt("Enter text:", "");
-        if (text) {
-          setTextElements((prev) => [...prev, { text, position: { x, y } }]);
-          saveToHistory();
-          syncCanvasState();
-          autoSaveDrawing();
-        }
-        break;
+      setTextInputPos({ x, y });
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 0);
+      break;
+
     }
   };
 
@@ -490,14 +492,31 @@ export default function Canvas() {
         break;
 
       case CanvasMode.Eraser:
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.beginPath();
-        ctx.arc(x, y, eraserSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = "source-over";
-        break;
-    }
-  };
+      const erasedX = x;
+      const erasedY = y;
+
+      // Deteksi teks yang berada dalam radius
+      const newTextElements = textElements.filter(({ position }) => {
+        const dx = position.x - erasedX;
+        const dy = position.y - erasedY;
+        return Math.sqrt(dx * dx + dy * dy) > (canvasState.eraserSize || 20);
+      });
+
+      if (newTextElements.length !== textElements.length) {
+        setTextElements(newTextElements);
+        saveToHistory();
+      }
+
+      // Hapus bitmap juga
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(erasedX, erasedY, canvasState.eraserSize || 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      break;
+
+        }
+      };
 
   const endDrawing = () => {
     if (!isDrawing) return;
@@ -524,19 +543,16 @@ export default function Canvas() {
         break;
 
       case CanvasMode.Arrow:
-        if (canvasState.start && canvasState.end) {
-          setArrows((prev) => [
-            ...prev,
-            {
-              start: canvasState.start!,
-              end: canvasState.end!,
-            },
-          ]);
+      if (canvasState.start && canvasState.end) {
+        const ctx = canvasRef.current?.getContext("2d");
+        if (ctx) {
+          drawArrow(ctx, canvasState.start, canvasState.end);
           saveToHistory();
           syncCanvasState();
-          autoSaveDrawing();
+            autoSaveDrawing();
         }
-        break;
+      }
+      break;
 
       case CanvasMode.Eraser:
         saveToHistory();
@@ -583,6 +599,37 @@ export default function Canvas() {
         onMouseLeave={endDrawing}
         className="absolute inset-0 w-full h-full bg-white"
       />
+      {textInputPos && (
+      <input
+        ref={textInputRef}
+        type="text"
+        value={textInput}
+        onChange={(e) => setTextInput(e.target.value)}
+        onBlur={() => {
+          if (textInput.trim() !== "") {
+            setTextElements(prev => [...prev, { text: textInput, position: textInputPos }]);
+            saveToHistory();
+          }
+          setTextInput("");
+          setTextInputPos(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            textInputRef.current?.blur();
+          }
+        }}
+        style={{
+          position: "absolute",
+          top: textInputPos.y,
+          left: textInputPos.x,
+          font: "16px Arial",
+          padding: "2px",
+          border: "1px solid #ccc",
+          zIndex: 10,
+        }}
+      />
+    )}
+
       <Toolbar
         canvasState={canvasState}
         setCanvasState={setCanvasState}
