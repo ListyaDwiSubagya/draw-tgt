@@ -4,13 +4,14 @@ import { prisma } from "@/lib/db";
 
 export async function GET(
   req: Request,
-  { params }: { params: { board: string } }
+  { params }: { params: Promise<{ board: string }> }
 ) {
+  const resolvedParams = await params;
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
   const board = await prisma.board.findUnique({
-    where: { id: params.board },
+    where: { id: resolvedParams.board },
     select: { drawingData: true },
   });
 
@@ -19,8 +20,9 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { board: string } }
+  { params }: { params: Promise<{ board: string }> }
 ) {
+  const resolvedParams = await params;
   const { userId } = await auth();
   if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
@@ -31,7 +33,7 @@ export async function POST(
     return new NextResponse("Missing drawing data", { status: 400 });
 
   await prisma.board.update({
-    where: { id: params.board },
+    where: { id: resolvedParams.board },
     data: { drawingData: drawing },
   });
 

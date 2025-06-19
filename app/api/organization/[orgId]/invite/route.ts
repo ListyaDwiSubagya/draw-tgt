@@ -4,8 +4,9 @@ import { currentUser } from "@clerk/nextjs/server";
 
 export async function POST(
   req: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const resolvedParams = await params;
   const user = await currentUser();
   if (!user)
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -19,7 +20,7 @@ export async function POST(
     return NextResponse.json({ message: "User not found" }, { status: 404 });
 
   const org = await prisma.organization.findUnique({
-    where: { id: params.orgId },
+    where: { id: resolvedParams.orgId },
   });
   if (!org)
     return NextResponse.json(
