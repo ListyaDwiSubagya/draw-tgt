@@ -1,22 +1,24 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import io from "socket.io-client";
 import Toolbar from "./toolbar";
 import { Info } from "./info";
 import { Participans } from "./participans";
 import { CanvasMode, Point, CanvasState } from "./types";
 import { useParams } from "next/navigation";
-
-type CanvasData = {
-  imageData: string;
-  textElements: { text: string; position: Point }[];
-  arrows: { start: Point; end: Point }[];
-};
-
-let socket: any;
+import { io, Socket } from "socket.io-client";
+import { useAuth, useUser } from "@clerk/nextjs";
 
 export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const { userId: clerkId } = useAuth();
+  const { user } = useUser();
+  const [databaseUserId, setDatabaseUserId] = useState<string | null>(null);
+
+  // State declarations
   const [canvasState, setCanvasState] = useState<CanvasState>({
     mode: CanvasMode.None,
   });
@@ -32,77 +34,130 @@ export default function Canvas() {
   const [textInput, setTextInput] = useState("");
   const [textInputPos, setTextInputPos] = useState<Point | null>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
-
+  const [remoteCursors, setRemoteCursors] = useState<
+    { userId: string; position: Point }[]
+  >([]);
 
   const params = useParams();
   const boardId = params?.board as string;
 
-  // Socket.io connection and event handlers
   useEffect(() => {
-    socket = io({ path: "/api/socket" });
+    if (!clerkId) return;
 
-    socket.emit("join", boardId);
+    const fetchDatabaseUserId = async () => {
+      try {
+        const response = await fetch(`/api/user/${clerkId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setDatabaseUserId(data.id);
+        }
+      } catch (error) {
+        console.error("Error fetching user ID:", error);
+      }
+    };
 
-    socket.on("drawing", (data: { x0: number; y0: number; x1: number; y1: number }) => {
-      if (isSyncing) return;
-      
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    fetchDatabaseUserId();
+  }, [clerkId]);
 
-      ctx.beginPath();
-      ctx.moveTo(data.x0, data.y0);
-      ctx.lineTo(data.x1, data.y1);
-      ctx.stroke();
+  useEffect(() => {
+    if (!boardId || !databaseUserId) return;
+
+    const socket = io("http://localhost:4000");
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      socket.emit("joinBoard", { boardId, userId: databaseUserId });
     });
 
-    socket.on("sync-canvas", (data: CanvasData) => {
-      setIsSyncing(true);
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const img = new Image();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        setTextElements(data.textElements || []);
-        setArrows(data.arrows || []);
-
-        // Update history
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        setDrawingHistory([imageData]);
-        setHistoryIndex(0);
-        setIsSyncing(false);
-      };
-      img.src = data.imageData;
+    socket.on("drawingChange", ({ drawingData, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        applyRemoteDrawing(drawingData);
+      }
     });
 
-    socket.on("request-canvas-state", (requestedBoardId: string) => {
-      if (requestedBoardId === boardId) {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        
-        const dataUrl = canvas.toDataURL("image/png");
-        socket.emit("send-canvas-state", {
-          boardId,
-          state: {
-            imageData: dataUrl,
-            textElements,
-            arrows
+    socket.on("pencilStroke", ({ stroke, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        applyRemotePencilStroke(stroke);
+      }
+    });
+
+    socket.on(
+      "shapePreview",
+      ({ tool, origin, currentPosition, userId: remoteUserId }) => {
+        if (remoteUserId !== databaseUserId) {
+          drawRemoteShapePreview(tool, origin, currentPosition);
+        }
+      }
+    );
+
+    socket.on(
+      "shapeFinal",
+      ({ tool, origin, currentPosition, userId: remoteUserId }) => {
+        if (remoteUserId !== databaseUserId) {
+          applyRemoteShape(tool, origin, currentPosition);
+        }
+      }
+    );
+
+    socket.on("textAdded", ({ textElement, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        setTextElements((prev) => [...prev, textElement]);
+        redrawCanvas();
+      }
+    });
+
+    socket.on("erasure", ({ erasedArea, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        applyRemoteErasure(erasedArea);
+      }
+    });
+
+    socket.on("cursorMove", ({ position, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        setRemoteCursors((prev) => {
+          const existing = prev.find((c) => c.userId === remoteUserId);
+          if (existing) {
+            return prev.map((c) =>
+              c.userId === remoteUserId ? { ...c, position } : c
+            );
           }
+          return [...prev, { userId: remoteUserId, position }];
         });
       }
+    });
+
+    socket.on("undo", (remoteUserId) => {
+      if (remoteUserId !== databaseUserId && historyIndex > 0) {
+        setHistoryIndex((prev) => prev - 1);
+      }
+    });
+
+    socket.on("redo", (remoteUserId) => {
+      if (
+        remoteUserId !== databaseUserId &&
+        historyIndex < drawingHistory.length - 1
+      ) {
+        setHistoryIndex((prev) => prev + 1);
+      }
+    });
+
+    socket.on("userJoined", (joinedUserId) => {
+      console.log(`User ${joinedUserId} joined the board`);
+    });
+
+    socket.on("error", (message) => {
+      console.error("WebSocket error:", message);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from WebSocket server");
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [boardId]);
+  }, [boardId, databaseUserId, historyIndex, drawingHistory.length]);
 
-  // Canvas setup and resize handler
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -111,14 +166,17 @@ export default function Canvas() {
     if (!ctx) return;
 
     const resizeCanvas = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
-      ctx.lineWidth = 3;
-      ctx.lineCap = "round";
-      ctx.strokeStyle = "#000000";
-      ctx.fillStyle = "#000000";
-      ctx.font = "16px Arial";
-      redrawCanvas();
+      const parent = canvas.parentElement;
+      if (parent) {
+        canvas.width = parent.clientWidth;
+        canvas.height = parent.clientHeight;
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#000000";
+        ctx.fillStyle = "#000000";
+        ctx.font = "16px Arial";
+        redrawCanvas();
+      }
     };
 
     resizeCanvas();
@@ -127,52 +185,105 @@ export default function Canvas() {
     return () => window.removeEventListener("resize", resizeCanvas);
   }, []);
 
-  // Initial drawing load
   useEffect(() => {
     if (!boardId) return;
 
     const fetchDrawing = async () => {
-      const res = await fetch(`/api/board/${boardId}/save`);
-      const data = await res.json();
-      const imgData = data.drawing;
+      try {
+        const res = await fetch(`/api/board/${boardId}/save`);
+        const data = await res.json();
+        const imgData = data.drawing;
 
-      if (!imgData) return;
+        if (!imgData) return;
 
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0);
+        const img = new Image();
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
 
-        if (data.textElements) setTextElements(data.textElements);
-        if (data.arrows) setArrows(data.arrows);
+          if (data.textElements) setTextElements(data.textElements);
+          if (data.arrows) setArrows(data.arrows);
 
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        setDrawingHistory([imageData]);
-        setHistoryIndex(0);
-      };
-      img.src = imgData;
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          if (isValidImageData(imageData)) {
+            setDrawingHistory([imageData]);
+            setHistoryIndex(0);
+          }
+        };
+        img.src = imgData;
+      } catch (error) {
+        console.error("Error loading initial drawing:", error);
+      }
     };
 
     fetchDrawing();
   }, [boardId]);
 
+  const isValidImageData = (data: any): data is ImageData => {
+    return (
+      data &&
+      data.data instanceof Uint8ClampedArray &&
+      typeof data.width === "number" &&
+      typeof data.height === "number"
+    );
+  };
+
+  const drawArrow = (
+    ctx: CanvasRenderingContext2D,
+    start: Point,
+    end: Point
+  ) => {
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    ctx.beginPath();
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(
+      end.x - 15 * Math.cos(angle - Math.PI / 6),
+      end.y - 15 * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      end.x - 15 * Math.cos(angle + Math.PI / 6),
+      end.y - 15 * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+  };
+
+  const exportCanvasAsImage = (): string | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    return canvas.toDataURL("image/png");
+  };
+
   const saveToHistory = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setDrawingHistory((prev) => [
-      ...prev.slice(0, historyIndex + 1),
-      imageData,
-    ]);
-    setHistoryIndex((prev) => prev + 1);
+    try {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      if (imageData) {
+        setDrawingHistory((prev) => [
+          ...prev.slice(0, historyIndex + 1),
+          imageData,
+        ]);
+        setHistoryIndex((prev) => prev + 1);
+      }
+    } catch (error) {
+      console.error("Error saving to history:", error);
+    }
   }, [historyIndex]);
 
   const redrawCanvas = useCallback(() => {
@@ -184,17 +295,20 @@ export default function Canvas() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Redraw from history
-    if (historyIndex >= 0) {
-      ctx.putImageData(drawingHistory[historyIndex], 0, 0);
+    if (historyIndex >= 0 && historyIndex < drawingHistory.length) {
+      const imageData = drawingHistory[historyIndex];
+      if (isValidImageData(imageData)) {
+        ctx.putImageData(imageData, 0, 0);
+      }
     }
 
-    // Redraw text elements
     textElements.forEach(({ text, position }) => {
       ctx.fillText(text, position.x, position.y);
     });
+    arrows.forEach((arrow) => {
+      drawArrow(ctx, arrow.start, arrow.end);
+    });
 
-    // Draw current preview
     if (isDrawing) {
       switch (canvasState.mode) {
         case CanvasMode.Pencil:
@@ -218,38 +332,35 @@ export default function Canvas() {
           break;
 
         case CanvasMode.Rectangle:
-          if (canvasState.origin && canvasState.currentPosition) {
-            ctx.beginPath();
-            ctx.rect(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              canvasState.currentPosition.x - canvasState.origin.x,
-              canvasState.currentPosition.y - canvasState.origin.y
-            );
-            ctx.stroke();
-          }
-          break;
-
         case CanvasMode.Circle:
           if (canvasState.origin && canvasState.currentPosition) {
-            const radius = Math.sqrt(
-              Math.pow(
-                canvasState.currentPosition.x - canvasState.origin.x,
-                2
-              ) +
-                Math.pow(
-                  canvasState.currentPosition.y - canvasState.origin.y,
-                  2
-                )
-            );
             ctx.beginPath();
-            ctx.arc(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              radius,
-              0,
-              Math.PI * 2
-            );
+            if (canvasState.mode === CanvasMode.Rectangle) {
+              ctx.rect(
+                canvasState.origin.x,
+                canvasState.origin.y,
+                canvasState.currentPosition.x - canvasState.origin.x,
+                canvasState.currentPosition.y - canvasState.origin.y
+              );
+            } else {
+              const radius = Math.sqrt(
+                Math.pow(
+                  canvasState.currentPosition.x - canvasState.origin.x,
+                  2
+                ) +
+                  Math.pow(
+                    canvasState.currentPosition.y - canvasState.origin.y,
+                    2
+                  )
+              );
+              ctx.arc(
+                canvasState.origin.x,
+                canvasState.origin.y,
+                radius,
+                0,
+                Math.PI * 2
+              );
+            }
             ctx.stroke();
           }
           break;
@@ -261,6 +372,13 @@ export default function Canvas() {
           break;
       }
     }
+
+    remoteCursors.forEach(({ position }) => {
+      ctx.fillStyle = "rgba(0, 0, 255, 0.5)";
+      ctx.beginPath();
+      ctx.arc(position.x, position.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
   }, [
     canvasState,
     drawingHistory,
@@ -268,79 +386,207 @@ export default function Canvas() {
     isDrawing,
     textElements,
     arrows,
+    remoteCursors,
   ]);
 
-  const drawArrow = (
-    ctx: CanvasRenderingContext2D,
-    start: Point,
-    end: Point
-  ) => {
-    // Draw line
-    ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.stroke();
+  const applyRemoteDrawing = useCallback(
+    (dataUrl: string) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    // Draw arrow head
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
-    ctx.beginPath();
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(
-      end.x - 15 * Math.cos(angle - Math.PI / 6),
-      end.y - 15 * Math.sin(angle - Math.PI / 6)
-    );
-    ctx.lineTo(
-      end.x - 15 * Math.cos(angle + Math.PI / 6),
-      end.y - 15 * Math.sin(angle + Math.PI / 6)
-    );
-    ctx.closePath();
-    ctx.fill();
-  };
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-  const exportCanvasAsImage = (): string | null => {
-    const canvas = canvasRef.current;
-    if (!canvas) return null;
-    return canvas.toDataURL("image/png");
-  };
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        textElements.forEach(({ text, position }) => {
+          ctx.fillText(text, position.x, position.y);
+        });
+        arrows.forEach((arrow) => {
+          drawArrow(ctx, arrow.start, arrow.end);
+        });
+        saveToHistory();
+      };
+      img.src = dataUrl;
+    },
+    [textElements, arrows, saveToHistory]
+  );
+
+  const applyRemotePencilStroke = useCallback(
+    (stroke: Point[]) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx || stroke.length < 2) return;
+
+      redrawCanvas();
+
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x, stroke[0].y);
+      for (let i = 1; i < stroke.length; i++) {
+        ctx.lineTo(stroke[i].x, stroke[i].y);
+      }
+      ctx.stroke();
+
+      setCanvasState((prev) => ({
+        ...prev,
+        currentStroke: [...(prev.currentStroke || []), ...stroke],
+      }));
+    },
+    [redrawCanvas]
+  );
+
+  const drawRemoteShapePreview = useCallback(
+    (
+      tool: CanvasMode.Rectangle | CanvasMode.Circle,
+      origin: Point,
+      currentPosition: Point
+    ) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      redrawCanvas();
+
+      ctx.beginPath();
+      if (tool === CanvasMode.Rectangle) {
+        ctx.rect(
+          origin.x,
+          origin.y,
+          currentPosition.x - origin.x,
+          currentPosition.y - origin.y
+        );
+      } else {
+        const radius = Math.sqrt(
+          Math.pow(currentPosition.x - origin.x, 2) +
+            Math.pow(currentPosition.y - origin.y, 2)
+        );
+        ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    },
+    [redrawCanvas]
+  );
+
+  const applyRemoteShape = useCallback(
+    (
+      tool: CanvasMode.Rectangle | CanvasMode.Circle,
+      origin: Point,
+      currentPosition: Point
+    ) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      redrawCanvas();
+
+      ctx.beginPath();
+      if (tool === CanvasMode.Rectangle) {
+        ctx.rect(
+          origin.x,
+          origin.y,
+          currentPosition.x - origin.x,
+          currentPosition.y - origin.y
+        );
+      } else {
+        const radius = Math.sqrt(
+          Math.pow(currentPosition.x - origin.x, 2) +
+            Math.pow(currentPosition.y - origin.y, 2)
+        );
+        ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+
+      saveToHistory();
+    },
+    [redrawCanvas, saveToHistory]
+  );
+
+  const applyRemoteErasure = useCallback(
+    (erasedArea: { x: number; y: number; size: number }) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      redrawCanvas();
+
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.arc(erasedArea.x, erasedArea.y, erasedArea.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+
+      saveToHistory();
+    },
+    [redrawCanvas, saveToHistory]
+  );
 
   const syncCanvasState = useCallback(() => {
-    if (isSyncing) return;
-    
-    const dataUrl = exportCanvasAsImage();
-    if (!dataUrl) return;
+    if (isSyncing || !socketRef.current || !boardId || !databaseUserId) return;
 
-    socket.emit("sync-canvas", {
+    setIsSyncing(true);
+    const dataUrl = exportCanvasAsImage();
+    if (!dataUrl) {
+      setIsSyncing(false);
+      return;
+    }
+
+    socketRef.current.emit("drawing", {
       boardId,
-      imageData: dataUrl,
-      textElements,
-      arrows,
+      drawingData: dataUrl,
+      userId: databaseUserId,
     });
-  }, [boardId, textElements, arrows, isSyncing]);
+
+    autoSaveDrawing().finally(() => setIsSyncing(false));
+  }, [boardId, databaseUserId, isSyncing]);
 
   const autoSaveDrawing = async () => {
     const dataUrl = exportCanvasAsImage();
     if (!dataUrl) return;
 
-    await fetch(`/api/board/${boardId}/save`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        drawing: dataUrl,
-        textElements,
-        arrows,
-      }),
-    });
+    try {
+      await fetch(`/api/board/${boardId}/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          drawing: dataUrl,
+          textElements,
+          arrows,
+        }),
+      });
+    } catch (error) {
+      console.error("Error auto-saving drawing:", error);
+    }
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!databaseUserId) {
+      alert("You must be logged in to draw.");
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+
+    socketRef.current?.emit("cursorMove", {
+      position: { x, y },
+      userId: databaseUserId,
+    });
 
     setIsDrawing(true);
 
@@ -370,17 +616,16 @@ export default function Canvas() {
         break;
 
       case CanvasMode.Text:
-      setTextInputPos({ x, y });
-      setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 0);
-      break;
-
+        setTextInputPos({ x, y });
+        setTimeout(() => {
+          textInputRef.current?.focus();
+        }, 0);
+        break;
     }
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || isSyncing) return;
+    if (!isDrawing || isSyncing || !databaseUserId) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -392,25 +637,106 @@ export default function Canvas() {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Clear and redraw from history for preview
-    if (historyIndex >= 0) {
-      ctx.putImageData(drawingHistory[historyIndex], 0, 0);
-    } else {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-
-    // Redraw persistent elements (text and completed arrows)
-    textElements.forEach(({ text, position }) => {
-      ctx.fillText(text, position.x, position.y);
-    });
-    arrows.forEach((arrow) => {
-      drawArrow(ctx, arrow.start, arrow.end);
+    socketRef.current?.emit("cursorMove", {
+      position: { x, y },
+      userId: databaseUserId,
     });
 
-    // Handle current drawing tool
+    redrawCanvas();
+
     switch (canvasState.mode) {
       case CanvasMode.Pencil:
-        if (canvasState.currentStroke) {
+        setCanvasState((prev) => ({
+          ...prev,
+          currentStroke: [...(prev.currentStroke || []), { x, y }],
+        }));
+
+        if (canvasState.currentStroke && canvasState.currentStroke.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(
+            canvasState.currentStroke[canvasState.currentStroke.length - 1].x,
+            canvasState.currentStroke[canvasState.currentStroke.length - 1].y
+          );
+          ctx.lineTo(x, y);
+          ctx.stroke();
+
+          if (canvasState.currentStroke.length > 1) {
+            const strokeToSync = canvasState.currentStroke.slice(-2);
+            socketRef.current?.emit("pencilStroke", {
+              boardId,
+              stroke: strokeToSync,
+              userId: databaseUserId,
+            });
+          }
+        }
+        break;
+
+      case CanvasMode.Rectangle:
+      case CanvasMode.Circle:
+        setCanvasState((prev) => ({
+          ...prev,
+          currentPosition: { x, y },
+        }));
+
+        socketRef.current?.emit("shapePreview", {
+          boardId,
+          tool: canvasState.mode,
+          origin: canvasState.origin,
+          currentPosition: { x, y },
+          userId: databaseUserId,
+        });
+        break;
+
+      case CanvasMode.Arrow:
+        setCanvasState((prev) => ({
+          ...prev,
+          end: { x, y },
+        }));
+        break;
+
+      case CanvasMode.Eraser:
+        const erasedX = x;
+        const erasedY = y;
+        const currentEraserSize = canvasState.eraserSize || eraserSize;
+
+        const newTextElements = textElements.filter(({ position }) => {
+          const dx = position.x - erasedX;
+          const dy = position.y - erasedY;
+          return Math.sqrt(dx * dx + dy * dy) > currentEraserSize;
+        });
+
+        if (newTextElements.length !== textElements.length) {
+          setTextElements(newTextElements);
+        }
+
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.beginPath();
+        ctx.arc(erasedX, erasedY, currentEraserSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+
+        socketRef.current?.emit("erasure", {
+          boardId,
+          erasedArea: { x: erasedX, y: erasedY, size: currentEraserSize },
+          userId: databaseUserId,
+        });
+        break;
+    }
+  };
+
+  const endDrawing = () => {
+    if (!isDrawing || !databaseUserId) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let shouldSaveAndSync = false;
+
+    switch (canvasState.mode) {
+      case CanvasMode.Pencil:
+        if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
           ctx.beginPath();
           ctx.moveTo(
             canvasState.currentStroke[0].x,
@@ -423,169 +749,114 @@ export default function Canvas() {
             );
           }
           ctx.stroke();
-
-          const lastPoint =
-            canvasState.currentStroke[canvasState.currentStroke.length - 1];
-          const newPoint = { x, y };
-
-          socket.emit("drawing", {
-            boardId,
-            x0: lastPoint.x,
-            y0: lastPoint.y,
-            x1: newPoint.x,
-            y1: newPoint.y,
-          });
-        }
-        setCanvasState((prev) => ({
-          ...prev,
-          currentStroke: [...(prev.currentStroke || []), { x, y }],
-        }));
-        break;
-
-      case CanvasMode.Rectangle:
-        if (canvasState.origin) {
-          ctx.beginPath();
-          ctx.rect(
-            canvasState.origin.x,
-            canvasState.origin.y,
-            x - canvasState.origin.x,
-            y - canvasState.origin.y
-          );
-          ctx.stroke();
-        }
-        setCanvasState((prev) => ({
-          ...prev,
-          currentPosition: { x, y },
-        }));
-        break;
-
-      case CanvasMode.Circle:
-        if (canvasState.origin) {
-          const radius = Math.sqrt(
-            Math.pow(x - canvasState.origin.x, 2) +
-              Math.pow(y - canvasState.origin.y, 2)
-          );
-          ctx.beginPath();
-          ctx.arc(
-            canvasState.origin.x,
-            canvasState.origin.y,
-            radius,
-            0,
-            Math.PI * 2
-          );
-          ctx.stroke();
-        }
-        setCanvasState((prev) => ({
-          ...prev,
-          currentPosition: { x, y },
-        }));
-        break;
-
-      case CanvasMode.Arrow:
-        if (canvasState.start) {
-          drawArrow(ctx, canvasState.start, { x, y });
-        }
-        setCanvasState((prev) => ({
-          ...prev,
-          end: { x, y },
-        }));
-        break;
-
-      case CanvasMode.Eraser:
-      const erasedX = x;
-      const erasedY = y;
-
-      // Deteksi teks yang berada dalam radius
-      const newTextElements = textElements.filter(({ position }) => {
-        const dx = position.x - erasedX;
-        const dy = position.y - erasedY;
-        return Math.sqrt(dx * dx + dy * dy) > (canvasState.eraserSize || 20);
-      });
-
-      if (newTextElements.length !== textElements.length) {
-        setTextElements(newTextElements);
-        saveToHistory();
-      }
-
-      // Hapus bitmap juga
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.beginPath();
-      ctx.arc(erasedX, erasedY, canvasState.eraserSize || 20, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      break;
-
-        }
-      };
-
-  const endDrawing = () => {
-    if (!isDrawing) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    switch (canvasState.mode) {
-      case CanvasMode.Pencil:
-        if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
-          saveToHistory();
-          syncCanvasState();
-          autoSaveDrawing();
+          shouldSaveAndSync = true;
         }
         break;
 
       case CanvasMode.Rectangle:
       case CanvasMode.Circle:
         if (canvasState.origin && canvasState.currentPosition) {
-          saveToHistory();
-          syncCanvasState();
-          autoSaveDrawing();
+          ctx.beginPath();
+          if (canvasState.mode === CanvasMode.Rectangle) {
+            ctx.rect(
+              canvasState.origin.x,
+              canvasState.origin.y,
+              canvasState.currentPosition.x - canvasState.origin.x,
+              canvasState.currentPosition.y - canvasState.origin.y
+            );
+          } else {
+            const radius = Math.sqrt(
+              Math.pow(
+                canvasState.currentPosition.x - canvasState.origin.x,
+                2
+              ) +
+                Math.pow(
+                  canvasState.currentPosition.y - canvasState.origin.y,
+                  2
+                )
+            );
+            ctx.arc(
+              canvasState.origin.x,
+              canvasState.origin.y,
+              radius,
+              0,
+              Math.PI * 2
+            );
+          }
+          ctx.stroke();
+
+          socketRef.current?.emit("shapeFinal", {
+            boardId,
+            tool: canvasState.mode,
+            origin: canvasState.origin,
+            currentPosition: canvasState.currentPosition,
+            userId: databaseUserId,
+          });
+
+          shouldSaveAndSync = true;
         }
         break;
 
       case CanvasMode.Arrow:
-      if (canvasState.start && canvasState.end) {
-        const ctx = canvasRef.current?.getContext("2d");
-        if (ctx) {
+        if (canvasState.start && canvasState.end) {
           drawArrow(ctx, canvasState.start, canvasState.end);
-          saveToHistory();
-          syncCanvasState();
-            autoSaveDrawing();
+          setArrows((prev) => [
+            ...prev,
+            { start: canvasState.start!, end: canvasState.end! },
+          ]);
+          shouldSaveAndSync = true;
         }
-      }
-      break;
+        break;
 
       case CanvasMode.Eraser:
-        saveToHistory();
-        syncCanvasState();
-        autoSaveDrawing();
+        shouldSaveAndSync = true;
         break;
     }
 
     setIsDrawing(false);
+    setCanvasState({ mode: CanvasMode.None });
+
+    if (shouldSaveAndSync) {
+      saveToHistory();
+      syncCanvasState();
+      autoSaveDrawing();
+    }
   };
 
   const undo = useCallback(() => {
     if (historyIndex <= 0) return;
 
     setHistoryIndex((prev) => prev - 1);
+    socketRef.current?.emit("undo", databaseUserId);
     syncCanvasState();
-  }, [historyIndex, syncCanvasState]);
+    autoSaveDrawing();
+  }, [historyIndex, syncCanvasState, autoSaveDrawing, databaseUserId]);
 
   const redo = useCallback(() => {
     if (historyIndex >= drawingHistory.length - 1) return;
 
     setHistoryIndex((prev) => prev + 1);
+    socketRef.current?.emit("redo", databaseUserId);
     syncCanvasState();
-  }, [drawingHistory.length, historyIndex, syncCanvasState]);
+    autoSaveDrawing();
+  }, [
+    drawingHistory.length,
+    historyIndex,
+    syncCanvasState,
+    autoSaveDrawing,
+    databaseUserId,
+  ]);
 
   useEffect(() => {
     redrawCanvas();
   }, [
-    canvasState,
+    canvasState.currentStroke,
+    canvasState.currentPosition,
     drawingHistory,
     historyIndex,
     textElements,
     arrows,
+    remoteCursors,
     redrawCanvas,
   ]);
 
@@ -600,35 +871,45 @@ export default function Canvas() {
         className="absolute inset-0 w-full h-full bg-white"
       />
       {textInputPos && (
-      <input
-        ref={textInputRef}
-        type="text"
-        value={textInput}
-        onChange={(e) => setTextInput(e.target.value)}
-        onBlur={() => {
-          if (textInput.trim() !== "") {
-            setTextElements(prev => [...prev, { text: textInput, position: textInputPos }]);
-            saveToHistory();
-          }
-          setTextInput("");
-          setTextInputPos(null);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            textInputRef.current?.blur();
-          }
-        }}
-        style={{
-          position: "absolute",
-          top: textInputPos.y,
-          left: textInputPos.x,
-          font: "16px Arial",
-          padding: "2px",
-          border: "1px solid #ccc",
-          zIndex: 10,
-        }}
-      />
-    )}
+        <input
+          ref={textInputRef}
+          type="text"
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onBlur={() => {
+            if (textInput.trim() !== "") {
+              const newTextElement = {
+                text: textInput,
+                position: textInputPos,
+              };
+              setTextElements((prev) => [...prev, newTextElement]);
+              saveToHistory();
+              socketRef.current?.emit("textAdded", {
+                boardId,
+                textElement: newTextElement,
+                userId: databaseUserId,
+              });
+              autoSaveDrawing();
+            }
+            setTextInput("");
+            setTextInputPos(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              textInputRef.current?.blur();
+            }
+          }}
+          style={{
+            position: "absolute",
+            top: textInputPos.y,
+            left: textInputPos.x,
+            font: "16px Arial",
+            padding: "2px",
+            border: "1px solid #ccc",
+            zIndex: 10,
+          }}
+        />
+      )}
 
       <Toolbar
         canvasState={canvasState}
