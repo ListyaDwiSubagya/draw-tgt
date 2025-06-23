@@ -43,9 +43,9 @@ export const OrgSidebar = () => {
     <div className="hidden lg:flex flex-col space-y-6 w-[240px] pl-5 pt-5 overflow-y-auto">
       <Link href="/dashboard">
         <div className="flex items-center gap-x-2">
-          <Image alt="" height={60} width={60} src="/logo.svg" />
+          <Image alt="" height={60} width={60} src="/logo2.png" />
           <span className={cn("font-semibold text-2xl", font.className)}>
-            Board
+            DrawBoard
           </span>
         </div>
       </Link>
@@ -76,37 +76,45 @@ export const OrgSidebar = () => {
       </div>
 
       <div className="mt-4">
-        <h4 className="text-sm text-gray-400 font-medium mb-2">My Teams</h4>
-        <div className="space-y-2">
-          {organizations.map((org) => (
-            <div key={org.id}>
-              <Link href={`/dashboard?orgId=${org.id}`}>
-                <div
-                  className={cn(
-                    "flex items-center gap-x-2 font-medium text-gray-800 hover:underline",
-                    currentOrgId === org.id && "text-blue-600"
-                  )}
-                >
-                  <ChevronDown className="w-4 h-4" />
-                  {org.name}
-                </div>
-              </Link>
-              <ul className="pl-6 mt-1 space-y-1">
-                {org.boards.map((board) => (
-                  <li key={board.id}>
-                    <Link
-                      href={`/board/${board.id}`}
-                      className="text-sm text-gray-600 hover:text-black"
-                    >
-                      • {board.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+  <h4 className="text-sm text-gray-400 font-medium mb-3 px-2">My Teams</h4>
+  <div className="space-y-1">
+    {organizations.map((org) => (
+      <div key={org.id} className="rounded-md">
+        <Link href={`/dashboard?orgId=${org.id}`}>
+          <div
+            className={cn(
+              "flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-colors hover:bg-gray-100",
+              currentOrgId === org.id && "bg-blue-100 text-blue-700 hover:bg-blue-100"
+            )}
+          >
+            <div className="flex items-center gap-x-2">
+              <ChevronDown className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium">{org.name}</span>
             </div>
-          ))}
-        </div>
+          </div>
+        </Link>
+
+        <ul className="pl-9 pr-2 py-1 space-y-1">
+          {org.boards.length > 0 ? (
+            org.boards.map((board) => (
+              <li key={board.id}>
+                <Link
+                  href={`/board/${board.id}`}
+                  className="block text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded-md transition"
+                >
+                  {board.title}
+                </Link>
+              </li>
+            ))
+          ) : (
+            <li className="text-xs text-gray-400 px-2 py-1">No boards</li>
+          )}
+        </ul>
       </div>
+    ))}
+  </div>
+</div>
+
     </div>
   );
 };

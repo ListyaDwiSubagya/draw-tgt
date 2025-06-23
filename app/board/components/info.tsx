@@ -25,7 +25,7 @@ export const Info = () => {
             <Link href="../dashboard">
                 <Button variant="board" className="px-2">
                     <Image
-                    src="/logo.svg"
+                    src="/logo2.png"
                     alt="logo"
                     height={40}
                     width={40}
@@ -33,7 +33,7 @@ export const Info = () => {
                     <span className={cn("font-semibold text-xl ml-2 text-black",
                         font.className
                     )}>
-                        Board
+                        DrawBoard
                     </span>
                 </Button>
             </Link>

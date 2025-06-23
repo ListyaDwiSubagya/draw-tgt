@@ -1,6 +1,14 @@
+"use client";
+
 import Image from 'next/image';
-import { StarIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 export interface BoardCardProps {
   id: string;
@@ -8,9 +16,19 @@ export interface BoardCardProps {
   title: string;
   imageUrl?: string;
   subtitle?: string;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-export default function BoardCard({ id, type, title, imageUrl, subtitle }: BoardCardProps) {
+export default function BoardCard({
+  id,
+  type,
+  title,
+  imageUrl,
+  subtitle,
+  onEdit,
+  onDelete,
+}: BoardCardProps) {
   if (type === 'new') {
     return (
       <div className="relative flex flex-col items-center justify-center bg-blue-600 rounded-lg shadow-md cursor-pointer
@@ -22,7 +40,6 @@ export default function BoardCard({ id, type, title, imageUrl, subtitle }: Board
     );
   }
 
-  // ✅ Wrap with Link to board detail
   return (
     <Link href={`/board/${id}`}>
       <div className="relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200
@@ -38,7 +55,38 @@ export default function BoardCard({ id, type, title, imageUrl, subtitle }: Board
           )}
         </div>
         <div className="p-3 flex-grow flex flex-col justify-between">
-          <p className="text-gray-800 text-base font-medium truncate">{title}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-gray-800 text-base font-medium truncate">{title}</p>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="p-1 hover:bg-gray-100 rounded-md"
+                  onClick={(e) => e.preventDefault()} // prevent redirect
+                >
+                  <MoreVertical className="w-4 h-4 text-gray-500" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onEdit?.(id);
+                  }}
+                >
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onDelete?.(id);
+                  }}
+                  className="text-red-600"
+                >
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
           {subtitle && (
             <p className="text-gray-500 text-xs mt-1 truncate">{subtitle}</p>
           )}

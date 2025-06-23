@@ -3,9 +3,7 @@ import {
   ClerkProvider,
   SignInButton,
   SignUpButton,
-  SignedIn,
   SignedOut,
-  UserButton,
 } from '@clerk/nextjs'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
@@ -35,12 +33,7 @@ export default function RootLayout({
       <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
             <SignedOut>
-              <SignInButton />
-              <SignUpButton />
             </SignedOut>
-            <SignedIn>
-              <UserButton></UserButton>
-            </SignedIn>
           {children}
         </body>
       </html>
