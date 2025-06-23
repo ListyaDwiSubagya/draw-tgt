@@ -16,8 +16,8 @@ export type Point = {
 export type Stroke = Point[];
 
 export type CanvasState =
-  | { mode: CanvasMode.None; currentStroke?: Stroke }
-  | { mode: CanvasMode.Pencil; currentStroke?: Stroke }
+  | { mode: CanvasMode.None; currentStroke?: Stroke; currentPosition?: Point; }
+  | { mode: CanvasMode.Pencil; currentStroke?: Stroke; currentPosition?: Point }
   | {
       mode: CanvasMode.Rectangle;
       origin?: Point;
@@ -35,14 +35,21 @@ export type CanvasState =
       text: string;
       position?: Point;
       currentStroke?: Stroke;
+      currentPosition?: Point;
     }
   | {
       mode: CanvasMode.Arrow;
       start?: Point;
       end?: Point;
       currentStroke?: Stroke;
+      currentPosition?: Point;
     }
-  | { mode: CanvasMode.Eraser; eraserSize?: number; currentStroke?: Stroke };
+  | {
+      mode: CanvasMode.Eraser;
+      eraserSize?: number;
+      currentStroke?: Stroke;
+      currentPosition?: Point;
+    };
 
 export interface ToolbarProps {
   canvasState: CanvasState;

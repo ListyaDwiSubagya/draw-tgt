@@ -3,16 +3,20 @@ import { ensureUserExists } from "@/lib/ensure-user";
 import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request, { params }: { params: { orgId: string } }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
+  const resolvedParams = await params;
   const { userId } = await auth();
-  const { orgId } = params;
+  const { orgId } = resolvedParams;
   const { title, imageUrl } = await req.json();
 
   if (!userId || !title || !orgId) {
     return new NextResponse("Missing fields", { status: 400 });
   }
 
-  const user = await ensureUserExists(userId); 
+  const user = await ensureUserExists(userId);
 
   const board = await prisma.board.create({
     data: {
@@ -29,9 +33,13 @@ export async function POST(req: Request, { params }: { params: { orgId: string }
   return NextResponse.json(board);
 }
 
-export async function GET(req: Request, { params }: { params: { orgId: string } }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ orgId: string }> }
+) {
+  const resolvedParams = await params;
   const { userId } = await auth();
-  const { orgId } = params;
+  const { orgId } = resolvedParams;
 
   if (!userId || !orgId) {
     return new NextResponse("Unauthorized", { status: 401 });
@@ -40,7 +48,7 @@ export async function GET(req: Request, { params }: { params: { orgId: string } 
   const boards = await prisma.board.findMany({
     where: {
       organizationId: orgId,
-    }
+    },
   });
 
   return NextResponse.json(boards);
