@@ -6,6 +6,7 @@ export enum CanvasMode {
   Text = "Text",
   Arrow = "Arrow",
   Eraser = "Eraser",
+  Triangle ="Triangle"
 }
 
 export type Point = {
@@ -49,7 +50,14 @@ export type CanvasState =
       eraserSize?: number;
       currentStroke?: Stroke;
       currentPosition?: Point;
-    };
+    }
+  | 
+    {
+      mode: CanvasMode.Triangle;
+      origin?: Point; // Tambahkan ini
+      currentPosition?: Point; // Ini sudah ada, tapi pastikan
+      // currentStroke tidak perlu ada di sini
+  };
 
 export interface ToolbarProps {
   canvasState: CanvasState;
