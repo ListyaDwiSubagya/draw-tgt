@@ -16,7 +16,7 @@ export type Point = {
 export type Stroke = Point[];
 
 export type CanvasState =
-  | { mode: CanvasMode.None; currentStroke?: Stroke; currentPosition?: Point; }
+  | { mode: CanvasMode.None; currentStroke?: Stroke; currentPosition?: Point }
   | { mode: CanvasMode.Pencil; currentStroke?: Stroke; currentPosition?: Point }
   | {
       mode: CanvasMode.Rectangle;
@@ -61,3 +61,17 @@ export interface ToolbarProps {
   eraserSize: number;
   setEraserSize: (size: number) => void;
 }
+
+export type VectorElement =
+  | { type: "pencil"; points: Point[]; color: string; width: number }
+  | { type: "rectangle"; from: Point; to: Point; color: string; width: number }
+  | {
+      type: "circle";
+      center: Point;
+      radius: number;
+      color: string;
+      width: number;
+    }
+  | { type: "text"; text: string; position: Point; color: string; size: number }
+  | { type: "arrow"; from: Point; to: Point; color: string; width: number }
+  | { type: "erase"; points: Point[]; size: number };
