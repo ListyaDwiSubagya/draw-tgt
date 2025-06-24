@@ -259,6 +259,22 @@ export default function Canvas() {
     ctx.fill();
   };
 
+  const drawTriangle = (
+    ctx: CanvasRenderingContext2D,
+    origin: Point,
+    currentPosition: Point
+  ) => {
+    ctx.beginPath();
+    ctx.moveTo(origin.x, currentPosition.y);
+    ctx.lineTo(currentPosition.x, currentPosition.y);
+    ctx.lineTo(
+      (origin.x + currentPosition.x) / 2,
+      origin.y
+    );
+    ctx.closePath();
+    ctx.stroke();
+  };
+
   const exportCanvasAsImage = (): string | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
@@ -332,36 +348,45 @@ export default function Canvas() {
           break;
 
         case CanvasMode.Rectangle:
-        case CanvasMode.Circle:
           if (canvasState.origin && canvasState.currentPosition) {
             ctx.beginPath();
-            if (canvasState.mode === CanvasMode.Rectangle) {
-              ctx.rect(
-                canvasState.origin.x,
-                canvasState.origin.y,
-                canvasState.currentPosition.x - canvasState.origin.x,
-                canvasState.currentPosition.y - canvasState.origin.y
-              );
-            } else {
-              const radius = Math.sqrt(
-                Math.pow(
-                  canvasState.currentPosition.x - canvasState.origin.x,
-                  2
-                ) +
-                  Math.pow(
-                    canvasState.currentPosition.y - canvasState.origin.y,
-                    2
-                  )
-              );
-              ctx.arc(
-                canvasState.origin.x,
-                canvasState.origin.y,
-                radius,
-                0,
-                Math.PI * 2
-              );
-            }
+            ctx.rect(
+              canvasState.origin.x,
+              canvasState.origin.y,
+              canvasState.currentPosition.x - canvasState.origin.x,
+              canvasState.currentPosition.y - canvasState.origin.y
+            );
             ctx.stroke();
+          }
+          break;
+
+        case CanvasMode.Circle:
+          if (canvasState.origin && canvasState.currentPosition) {
+            const radius = Math.sqrt(
+              Math.pow(
+                canvasState.currentPosition.x - canvasState.origin.x,
+                2
+              ) +
+                Math.pow(
+                  canvasState.currentPosition.y - canvasState.origin.y,
+                  2
+                )
+            );
+            ctx.beginPath();
+            ctx.arc(
+              canvasState.origin.x,
+              canvasState.origin.y,
+              radius,
+              0,
+              Math.PI * 2
+            );
+            ctx.stroke();
+          }
+          break;
+
+        case CanvasMode.Triangle:
+          if (canvasState.origin && canvasState.currentPosition) {
+            drawTriangle(ctx, canvasState.origin, canvasState.currentPosition);
           }
           break;
 
@@ -441,7 +466,7 @@ export default function Canvas() {
 
   const drawRemoteShapePreview = useCallback(
     (
-      tool: CanvasMode.Rectangle | CanvasMode.Circle,
+      tool: CanvasMode.Rectangle | CanvasMode.Circle | CanvasMode.Triangle,
       origin: Point,
       currentPosition: Point
     ) => {
@@ -461,12 +486,14 @@ export default function Canvas() {
           currentPosition.x - origin.x,
           currentPosition.y - origin.y
         );
-      } else {
+      } else if (tool === CanvasMode.Circle) {
         const radius = Math.sqrt(
           Math.pow(currentPosition.x - origin.x, 2) +
             Math.pow(currentPosition.y - origin.y, 2)
         );
         ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
+      } else if (tool === CanvasMode.Triangle) {
+        drawTriangle(ctx, origin, currentPosition);
       }
       ctx.stroke();
     },
@@ -475,7 +502,7 @@ export default function Canvas() {
 
   const applyRemoteShape = useCallback(
     (
-      tool: CanvasMode.Rectangle | CanvasMode.Circle,
+      tool: CanvasMode.Rectangle | CanvasMode.Circle | CanvasMode.Triangle,
       origin: Point,
       currentPosition: Point
     ) => {
@@ -495,12 +522,14 @@ export default function Canvas() {
           currentPosition.x - origin.x,
           currentPosition.y - origin.y
         );
-      } else {
+      } else if (tool === CanvasMode.Circle) {
         const radius = Math.sqrt(
           Math.pow(currentPosition.x - origin.x, 2) +
             Math.pow(currentPosition.y - origin.y, 2)
         );
         ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
+      } else if (tool === CanvasMode.Triangle) {
+        drawTriangle(ctx, origin, currentPosition);
       }
       ctx.stroke();
 
@@ -600,6 +629,7 @@ export default function Canvas() {
 
       case CanvasMode.Rectangle:
       case CanvasMode.Circle:
+      case CanvasMode.Triangle:
         setCanvasState({
           mode: canvasState.mode,
           origin: { x, y },
@@ -673,6 +703,7 @@ export default function Canvas() {
 
       case CanvasMode.Rectangle:
       case CanvasMode.Circle:
+      case CanvasMode.Triangle:
         setCanvasState((prev) => ({
           ...prev,
           currentPosition: { x, y },
@@ -725,103 +756,113 @@ export default function Canvas() {
   };
 
   const endDrawing = () => {
-    if (!isDrawing || !databaseUserId) return;
+  if (!isDrawing || !databaseUserId) return;
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const canvas = canvasRef.current;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
 
-    let shouldSaveAndSync = false;
+  let shouldSaveAndSync = false;
 
-    switch (canvasState.mode) {
-      case CanvasMode.Pencil:
-        if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(
-            canvasState.currentStroke[0].x,
-            canvasState.currentStroke[0].y
+  switch (canvasState.mode) {
+    case CanvasMode.Pencil:
+      if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(
+          canvasState.currentStroke[0].x,
+          canvasState.currentStroke[0].y
+        );
+        for (let i = 1; i < canvasState.currentStroke.length; i++) {
+          ctx.lineTo(
+            canvasState.currentStroke[i].x,
+            canvasState.currentStroke[i].y
           );
-          for (let i = 1; i < canvasState.currentStroke.length; i++) {
-            ctx.lineTo(
-              canvasState.currentStroke[i].x,
-              canvasState.currentStroke[i].y
-            );
-          }
-          ctx.stroke();
-          shouldSaveAndSync = true;
         }
-        break;
-
-      case CanvasMode.Rectangle:
-      case CanvasMode.Circle:
-        if (canvasState.origin && canvasState.currentPosition) {
-          ctx.beginPath();
-          if (canvasState.mode === CanvasMode.Rectangle) {
-            ctx.rect(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              canvasState.currentPosition.x - canvasState.origin.x,
-              canvasState.currentPosition.y - canvasState.origin.y
-            );
-          } else {
-            const radius = Math.sqrt(
-              Math.pow(
-                canvasState.currentPosition.x - canvasState.origin.x,
-                2
-              ) +
-                Math.pow(
-                  canvasState.currentPosition.y - canvasState.origin.y,
-                  2
-                )
-            );
-            ctx.arc(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              radius,
-              0,
-              Math.PI * 2
-            );
-          }
-          ctx.stroke();
-
-          socketRef.current?.emit("shapeFinal", {
-            boardId,
-            tool: canvasState.mode,
-            origin: canvasState.origin,
-            currentPosition: canvasState.currentPosition,
-            userId: databaseUserId,
-          });
-
-          shouldSaveAndSync = true;
-        }
-        break;
-
-      case CanvasMode.Arrow:
-        if (canvasState.start && canvasState.end) {
-          drawArrow(ctx, canvasState.start, canvasState.end);
-          setArrows((prev) => [
-            ...prev,
-            { start: canvasState.start!, end: canvasState.end! },
-          ]);
-          shouldSaveAndSync = true;
-        }
-        break;
-
-      case CanvasMode.Eraser:
+        ctx.stroke();
         shouldSaveAndSync = true;
-        break;
-    }
+      }
+      break;
 
-    setIsDrawing(false);
+    case CanvasMode.Rectangle:
+      if (canvasState.origin && canvasState.currentPosition) {
+        ctx.beginPath();
+        ctx.rect(
+          canvasState.origin.x,
+          canvasState.origin.y,
+          canvasState.currentPosition.x - canvasState.origin.x,
+          canvasState.currentPosition.y - canvasState.origin.y
+        );
+        ctx.stroke();
+        shouldSaveAndSync = true;
+      }
+      break;
+
+    case CanvasMode.Circle:
+      if (canvasState.origin && canvasState.currentPosition) {
+        const radius = Math.sqrt(
+          Math.pow(
+            canvasState.currentPosition.x - canvasState.origin.x,
+            2
+          ) +
+            Math.pow(
+              canvasState.currentPosition.y - canvasState.origin.y,
+              2
+            )
+        );
+        ctx.beginPath();
+        ctx.arc(
+          canvasState.origin.x,
+          canvasState.origin.y,
+          radius,
+          0,
+          Math.PI * 2
+        );
+        ctx.stroke();
+        shouldSaveAndSync = true;
+      }
+      break;
+
+    case CanvasMode.Triangle:
+      if (canvasState.origin && canvasState.currentPosition) {
+        drawTriangle(ctx, canvasState.origin, canvasState.currentPosition);
+        shouldSaveAndSync = true;
+      }
+      break;
+
+    case CanvasMode.Arrow:
+      if (canvasState.start && canvasState.end) {
+        drawArrow(ctx, canvasState.start, canvasState.end);
+        setArrows((prev) => [
+          ...prev,
+          { start: canvasState.start!, end: canvasState.end! },
+        ]);
+        shouldSaveAndSync = true;
+      }
+      break;
+
+    case CanvasMode.Eraser:
+      shouldSaveAndSync = true;
+      // TIDAK MENGUBAH MODE DI SINI,
+      // karena kita ingin tetap di mode Eraser.
+      break;
+  }
+
+  setIsDrawing(false);
+
+  // --- BARIS PERUBAHAN UTAMA DI SINI ---
+  // Hanya atur mode kembali ke CanvasMode.None jika bukan Eraser
+  if (canvasState.mode !== CanvasMode.Eraser) {
     setCanvasState({ mode: CanvasMode.None });
+  }
+  // ------------------------------------
 
-    if (shouldSaveAndSync) {
-      saveToHistory();
-      syncCanvasState();
-      autoSaveDrawing();
-    }
-  };
+  if (shouldSaveAndSync) {
+    saveToHistory();
+    syncCanvasState();
+    autoSaveDrawing();
+  }
+};
 
   const undo = useCallback(() => {
     if (historyIndex <= 0) return;
