@@ -7,7 +7,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: "http://10.132.1.246:3000",
     methods: ["GET", "POST"],
   },
 });
@@ -74,23 +74,23 @@ io.on("connection", (socket) => {
   });
 
   socket.on("drawing", ({ boardId, drawingData, userId }) => {
-    socket.to(boardId).emit("drawingChange", { drawingData, userId });
+    io.to(boardId).emit("drawingChange", { drawingData, userId });
   });
 
   socket.on("textAdded", ({ boardId, textElement, userId }) => {
-    socket.to(boardId).emit("textAdded", { textElement, userId });
+    io.to(boardId).emit("textAdded", { textElement, userId });
   });
 
   socket.on("erasure", ({ boardId, erasedArea, userId }) => {
-    socket.to(boardId).emit("erasure", { erasedArea, userId });
+    io.to(boardId).emit("erasure", { erasedArea, userId });
   });
 
   socket.on("undo", ({ boardId, userId }) => {
-    socket.to(boardId).emit("undo", userId);
+    io.to(boardId).emit("undo", userId);
   });
 
   socket.on("redo", ({ boardId, userId }) => {
-    socket.to(boardId).emit("redo", userId);
+    io.to(boardId).emit("redo", userId);
   });
 
   socket.on("disconnect", () => {
@@ -99,6 +99,8 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`WebSocket server listening on port ${PORT}`);
+const HOST = "0.0.0.0";
+
+server.listen(PORT, HOST, () => {
+  console.log(`WebSocket server listening on http://${HOST}:${PORT}`);
 });

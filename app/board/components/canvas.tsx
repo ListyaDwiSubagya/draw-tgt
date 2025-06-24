@@ -62,7 +62,7 @@ export default function Canvas() {
   useEffect(() => {
     if (!boardId || !databaseUserId) return;
 
-    const socket = io("http://localhost:4000");
+    const socket = io("http://10.132.1.246:4000");
     socketRef.current = socket;
 
     socket.on("connect", () => {
