@@ -6,7 +6,7 @@ export enum CanvasMode {
   Text = "Text",
   Arrow = "Arrow",
   Eraser = "Eraser",
-  Triangle ="Triangle"
+  Triangle = "Triangle",
 }
 
 export type Point = {
@@ -51,13 +51,12 @@ export type CanvasState =
       currentStroke?: Stroke;
       currentPosition?: Point;
     }
-  | 
-    {
+  | {
       mode: CanvasMode.Triangle;
       origin?: Point; // Tambahkan ini
       currentPosition?: Point; // Ini sudah ada, tapi pastikan
-      // currentStroke tidak perlu ada di sini
-  };
+      currentStroke?: Stroke;
+    };
 
 export interface ToolbarProps {
   canvasState: CanvasState;
@@ -66,8 +65,12 @@ export interface ToolbarProps {
   canRedo: boolean;
   undo: () => void;
   redo: () => void;
-  eraserSize: number;
-  setEraserSize: (size: number) => void;
+  currentColor: string; // Tambahkan ini
+  setCurrentColor: (color: string) => void; // Tambahkan ini
+  currentWidth: number; // Tambahkan ini
+  setCurrentWidth: (width: number) => void; // Tambahkan ini
+  eraserSize?: number; // Opsional jika masih digunakan
+  setEraserSize?: (size: number) => void; // Opsional jika masih digunakan
 }
 
 export type VectorElement =
