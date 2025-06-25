@@ -1,14 +1,14 @@
 "use client";
-import { 
-  PencilLine, 
-  Square, 
-  Circle, 
-  Undo2, 
-  Redo2, 
+import {
+  PencilLine,
+  Square,
+  Circle,
+  Undo2,
+  Redo2,
   TextCursorInput,
   ArrowRight,
   Eraser,
-  Triangle
+  Triangle,
 } from "lucide-react";
 import { CanvasMode, ToolbarProps } from "./types";
 
@@ -25,18 +25,22 @@ export default function Toolbar({
       {/* Text Tool */}
       <button
         className={`p-2 rounded-md ${
-          canvasState.mode === CanvasMode.Text ? "bg-blue-500 text-white" : "bg-white hover:bg-gray-100"
+          canvasState.mode === CanvasMode.Text
+            ? "bg-blue-500 text-white"
+            : "bg-white hover:bg-gray-100"
         }`}
         onClick={() => setCanvasState({ mode: CanvasMode.Text, text: "" })}
         title="Text Tool (T)"
       >
         <TextCursorInput size={20} />
       </button>
-      
+
       {/* Arrow Tool */}
       <button
         className={`p-2 rounded-md ${
-          canvasState.mode === CanvasMode.Arrow ? "bg-blue-500 text-white" : "bg-white hover:bg-gray-100"
+          canvasState.mode === CanvasMode.Arrow
+            ? "bg-blue-500 text-white"
+            : "bg-white hover:bg-gray-100"
         }`}
         onClick={() => setCanvasState({ mode: CanvasMode.Arrow })}
         title="Arrow Tool (A)"
@@ -51,10 +55,12 @@ export default function Toolbar({
             ? "bg-blue-500 text-white"
             : "bg-white hover:bg-gray-100"
         }`}
-        onClick={() => setCanvasState({ 
-          mode: CanvasMode.Pencil, 
-          currentStroke: [] 
-        })}
+        onClick={() =>
+          setCanvasState({
+            mode: CanvasMode.Pencil,
+            currentStroke: [],
+          })
+        }
         title="Pencil Tool (P)"
       >
         <PencilLine size={20} />
@@ -102,14 +108,16 @@ export default function Toolbar({
       {/* Eraser Tool - Simplified */}
       <button
         className={`p-2 rounded-md ${
-          canvasState.mode === CanvasMode.Eraser 
-            ? "bg-blue-500 text-white" 
+          canvasState.mode === CanvasMode.Eraser
+            ? "bg-blue-500 text-white"
             : "bg-white hover:bg-gray-100"
         }`}
-        onClick={() => setCanvasState({ 
-          mode: CanvasMode.Eraser,
-          eraserSize: 20 // Fixed size
-        })}
+        onClick={() =>
+          setCanvasState({
+            mode: CanvasMode.Eraser,
+            eraserSize: 20, // Fixed size
+          })
+        }
         title="Eraser (E)"
       >
         <Eraser size={20} />
