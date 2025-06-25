@@ -74,15 +74,46 @@ export interface ToolbarProps {
 }
 
 export type VectorElement =
-  | { type: "pencil"; points: Point[]; color: string; width: number }
-  | { type: "rectangle"; from: Point; to: Point; color: string; width: number }
   | {
-      type: "circle";
-      center: Point;
-      radius: number;
+      type: "path";
+      points: Point[];
       color: string;
       width: number;
     }
-  | { type: "text"; text: string; position: Point; color: string; size: number }
-  | { type: "arrow"; from: Point; to: Point; color: string; width: number }
-  | { type: "erase"; points: Point[]; size: number };
+  | {
+      type: "rectangle";
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      color: string;
+      strokeWidth: number;
+    }
+  | {
+      type: "circle";
+      cx: number;
+      cy: number;
+      radius: number;
+      color: string;
+      strokeWidth: number;
+    }
+  | {
+      type: "triangle";
+      points: [Point, Point, Point];
+      color: string;
+      strokeWidth: number;
+    }
+  | {
+      type: "text";
+      content: string;
+      x: number;
+      y: number;
+      color: string;
+    }
+  | {
+      type: "arrow";
+      start: Point;
+      end: Point;
+      color: string;
+      strokeWidth: number;
+    };

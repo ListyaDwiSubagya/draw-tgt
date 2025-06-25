@@ -6,7 +6,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Toolbar from "./toolbar";
 import { Info } from "./info";
 import { Participans } from "./participans";
-import { CanvasMode, Point, CanvasState } from "./types";
+import { CanvasMode, Point, CanvasState, VectorElement } from "./types";
 import { useParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { useAuth, useUser } from "@clerk/nextjs";
@@ -17,6 +17,8 @@ export default function Canvas() {
   const { userId: clerkId } = useAuth();
   const { user } = useUser();
   const [databaseUserId, setDatabaseUserId] = useState<string | null>(null);
+  const [currentColor, setCurrentColor] = useState("#000000");
+  const [currentWidth, setCurrentWidth] = useState(3);
 
   // State declarations
   const [canvasState, setCanvasState] = useState<CanvasState>({
@@ -28,6 +30,7 @@ export default function Canvas() {
   const [textElements, setTextElements] = useState<
     { text: string; position: Point }[]
   >([]);
+  const [vectorElements, setVectorElements] = useState<VectorElement[]>([]);
   const [arrows, setArrows] = useState<{ start: Point; end: Point }[]>([]);
   const [eraserSize, setEraserSize] = useState(20);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -188,41 +191,28 @@ export default function Canvas() {
   useEffect(() => {
     if (!boardId) return;
 
-    const fetchDrawing = async () => {
+    const fetchVectorShapes = async () => {
       try {
         const res = await fetch(`/api/board/${boardId}/save`);
         const data = await res.json();
-        const imgData = data.drawing;
 
-        if (!imgData) return;
+        if (data.vectorShapes && canvasRef.current) {
+          setVectorElements(data.vectorShapes);
 
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
 
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        const img = new Image();
-        img.onload = () => {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
 
-          if (data.textElements) setTextElements(data.textElements);
-          if (data.arrows) setArrows(data.arrows);
-
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          if (isValidImageData(imageData)) {
-            setDrawingHistory([imageData]);
-            setHistoryIndex(0);
-          }
-        };
-        img.src = imgData;
+          drawVectorShapes(ctx, data.vectorShapes);
+        }
       } catch (error) {
-        console.error("Error loading initial drawing:", error);
+        console.error("Error loading vector shapes:", error);
       }
     };
 
-    fetchDrawing();
+    fetchVectorShapes();
   }, [boardId]);
 
   const isValidImageData = (data: any): data is ImageData => {
@@ -234,10 +224,62 @@ export default function Canvas() {
     );
   };
 
+  function drawVectorShapes(ctx: CanvasRenderingContext2D, elements: any[]) {
+    elements.forEach((element) => {
+      ctx.strokeStyle = element.color || "black";
+      ctx.fillStyle = element.color || "black";
+
+      switch (element.type) {
+        case "path":
+          ctx.beginPath();
+          ctx.moveTo(element.points[0].x, element.points[0].y);
+          for (let i = 1; i < element.points.length; i++) {
+            ctx.lineTo(element.points[i].x, element.points[i].y);
+          }
+          ctx.stroke();
+          break;
+
+        case "rectangle":
+          ctx.beginPath();
+          ctx.rect(element.x, element.y, element.width, element.height);
+          ctx.stroke();
+          break;
+
+        case "circle":
+          ctx.beginPath();
+          ctx.arc(element.cx, element.cy, element.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+
+        case "triangle":
+          ctx.beginPath();
+          ctx.moveTo(element.points[0].x, element.points[0].y);
+          ctx.lineTo(element.points[1].x, element.points[1].y);
+          ctx.lineTo(element.points[2].x, element.points[2].y);
+          ctx.closePath();
+          ctx.stroke();
+          break;
+
+        case "text":
+          ctx.font = element.font || "16px Arial";
+          ctx.fillText(element.content, element.x, element.y);
+          break;
+
+        case "arrow":
+          drawArrow(ctx, element.start, element.end, element.color);
+          break;
+
+        default:
+          console.warn("Unknown element type:", element.type);
+      }
+    });
+  }
+
   const drawArrow = (
     ctx: CanvasRenderingContext2D,
     start: Point,
-    end: Point
+    end: Point,
+    color?: any
   ) => {
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
@@ -315,85 +357,52 @@ export default function Canvas() {
       }
     }
 
-    textElements.forEach(({ text, position }) => {
-      ctx.fillText(text, position.x, position.y);
-    });
-    arrows.forEach((arrow) => {
-      drawArrow(ctx, arrow.start, arrow.end);
-    });
+    vectorElements.forEach((element) => {
+      ctx.strokeStyle = element.color;
+      ctx.fillStyle = element.color;
+      ctx.lineWidth = element.type === "path" ? element.width : currentWidth;
 
-    if (isDrawing) {
-      switch (canvasState.mode) {
-        case CanvasMode.Pencil:
-          if (
-            canvasState.currentStroke &&
-            canvasState.currentStroke.length > 1
-          ) {
-            ctx.beginPath();
-            ctx.moveTo(
-              canvasState.currentStroke[0].x,
-              canvasState.currentStroke[0].y
-            );
-            for (let i = 1; i < canvasState.currentStroke.length; i++) {
-              ctx.lineTo(
-                canvasState.currentStroke[i].x,
-                canvasState.currentStroke[i].y
-              );
-            }
-            ctx.stroke();
+      switch (element.type) {
+        case "path":
+          ctx.beginPath();
+          ctx.moveTo(element.points[0].x, element.points[0].y);
+          for (let i = 1; i < element.points.length; i++) {
+            ctx.lineTo(element.points[i].x, element.points[i].y);
           }
+          ctx.stroke();
           break;
 
-        case CanvasMode.Rectangle:
-          if (canvasState.origin && canvasState.currentPosition) {
-            ctx.beginPath();
-            ctx.rect(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              canvasState.currentPosition.x - canvasState.origin.x,
-              canvasState.currentPosition.y - canvasState.origin.y
-            );
-            ctx.stroke();
-          }
+        case "rectangle":
+          ctx.beginPath();
+          ctx.rect(element.x, element.y, element.width, element.height);
+          ctx.stroke();
           break;
 
-        case CanvasMode.Circle:
-          if (canvasState.origin && canvasState.currentPosition) {
-            const radius = Math.sqrt(
-              Math.pow(
-                canvasState.currentPosition.x - canvasState.origin.x,
-                2
-              ) +
-                Math.pow(
-                  canvasState.currentPosition.y - canvasState.origin.y,
-                  2
-                )
-            );
-            ctx.beginPath();
-            ctx.arc(
-              canvasState.origin.x,
-              canvasState.origin.y,
-              radius,
-              0,
-              Math.PI * 2
-            );
-            ctx.stroke();
-          }
+        case "circle":
+          ctx.beginPath();
+          ctx.arc(element.cx, element.cy, element.radius, 0, Math.PI * 2);
+          ctx.stroke();
           break;
 
-        case CanvasMode.Triangle:
-          if (canvasState.origin && canvasState.currentPosition) {
-            drawTriangle(ctx, canvasState.origin, canvasState.currentPosition);
-          }
+        case "triangle":
+          ctx.beginPath();
+          ctx.moveTo(element.points[0].x, element.points[0].y);
+          ctx.lineTo(element.points[1].x, element.points[1].y);
+          ctx.lineTo(element.points[2].x, element.points[2].y);
+          ctx.closePath();
+          ctx.stroke();
           break;
 
-        case CanvasMode.Arrow:
-          if (canvasState.start && canvasState.end) {
-            drawArrow(ctx, canvasState.start, canvasState.end);
-          }
+        case "text":
+          ctx.font = "16px Arial";
+          ctx.fillText(element.content, element.x, element.y);
+          break;
+
+        case "arrow":
+          drawArrow(ctx, element.start, element.end);
           break;
       }
-    }
+    });
 
     remoteCursors.forEach(({ position }) => {
       ctx.fillStyle = "rgba(0, 0, 255, 0.5)";
@@ -402,17 +411,19 @@ export default function Canvas() {
       ctx.fill();
     });
   }, [
-    canvasState,
     drawingHistory,
     historyIndex,
-    isDrawing,
-    textElements,
-    arrows,
+    vectorElements,
     remoteCursors,
+    currentWidth,
   ]);
 
+  useEffect(() => {
+    redrawCanvas();
+  }, [redrawCanvas]);
+
   const applyRemoteDrawing = useCallback(
-    (dataUrl: string) => {
+    (svgData: string) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -420,20 +431,18 @@ export default function Canvas() {
       if (!ctx) return;
 
       const img = new Image();
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(svgBlob);
+
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0);
-        textElements.forEach(({ text, position }) => {
-          ctx.fillText(text, position.x, position.y);
-        });
-        arrows.forEach((arrow) => {
-          drawArrow(ctx, arrow.start, arrow.end);
-        });
+        URL.revokeObjectURL(url);
         saveToHistory();
       };
-      img.src = dataUrl;
+      img.src = url;
     },
-    [textElements, arrows, saveToHistory]
+    [saveToHistory]
   );
 
   const applyRemotePencilStroke = useCallback(
@@ -535,6 +544,73 @@ export default function Canvas() {
     [redrawCanvas, saveToHistory]
   );
 
+  const exportAsSVG = useCallback((): string => {
+    const canvas = canvasRef.current;
+    if (!canvas) return "";
+
+    const svgWidth = canvas.width;
+    const svgHeight = canvas.height;
+
+    let svgContent = `
+    <svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="white"/>
+  `;
+
+    vectorElements.forEach((element) => {
+      switch (element.type) {
+        case "path":
+          svgContent += `<path d="M ${element.points
+            .map((p) => `${p.x} ${p.y}`)
+            .join(" L ")}" stroke="${element.color}" stroke-width="${
+            element.width
+          }" fill="none"/>`;
+          break;
+
+        case "rectangle":
+          svgContent += `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" stroke="${element.color}" stroke-width="${element.strokeWidth}" fill="none"/>`;
+          break;
+
+        case "circle":
+          svgContent += `<circle cx="${element.cx}" cy="${element.cy}" r="${element.radius}" stroke="${element.color}" stroke-width="${element.strokeWidth}" fill="none"/>`;
+          break;
+
+        case "triangle":
+          svgContent += `<polygon points="${element.points
+            .map((p) => `${p.x},${p.y}`)
+            .join(" ")}" stroke="${element.color}" stroke-width="${
+            element.strokeWidth
+          }" fill="none"/>`;
+          break;
+
+        case "text":
+          svgContent += `<text x="${element.x}" y="${element.y}" fill="${element.color}" font-family="Arial" font-size="16">${element.content}</text>`;
+          break;
+
+        case "arrow":
+          svgContent += `<line x1="${element.start.x}" y1="${element.start.y}" x2="${element.end.x}" y2="${element.end.y}" stroke="${element.color}" stroke-width="${element.strokeWidth}"/>`;
+
+          const angle = Math.atan2(
+            element.end.y - element.start.y,
+            element.end.x - element.start.x
+          );
+          const arrowHead1 = {
+            x: element.end.x - 15 * Math.cos(angle - Math.PI / 6),
+            y: element.end.y - 15 * Math.sin(angle - Math.PI / 6),
+          };
+          const arrowHead2 = {
+            x: element.end.x - 15 * Math.cos(angle + Math.PI / 6),
+            y: element.end.y - 15 * Math.sin(angle + Math.PI / 6),
+          };
+
+          svgContent += `<polygon points="${element.end.x},${element.end.y} ${arrowHead1.x},${arrowHead1.y} ${arrowHead2.x},${arrowHead2.y}" fill="${element.color}"/>`;
+          break;
+      }
+    });
+
+    svgContent += "</svg>";
+    return svgContent;
+  }, [vectorElements]);
+
   const applyRemoteErasure = useCallback(
     (erasedArea: { x: number; y: number; size: number }) => {
       const canvas = canvasRef.current;
@@ -560,41 +636,58 @@ export default function Canvas() {
     if (isSyncing || !socketRef.current || !boardId || !databaseUserId) return;
 
     setIsSyncing(true);
-    const dataUrl = exportCanvasAsImage();
-    if (!dataUrl) {
+
+    const svgData = exportAsSVG();
+    if (!svgData) {
       setIsSyncing(false);
       return;
     }
 
     socketRef.current.emit("drawing", {
       boardId,
-      drawingData: dataUrl,
+      drawingData: svgData, 
       userId: databaseUserId,
     });
 
     autoSaveDrawing().finally(() => setIsSyncing(false));
-  }, [boardId, databaseUserId, isSyncing]);
+  }, [boardId, databaseUserId, isSyncing, exportAsSVG]); 
 
   const autoSaveDrawing = async () => {
-    const dataUrl = exportCanvasAsImage();
-    if (!dataUrl) return;
-
     try {
-      await fetch(`/api/board/${boardId}/save`, {
+      const rasterData = exportCanvasAsImage();
+      const vectorData = exportAsSVG();
+
+      const response = await fetch(`/api/board/${boardId}/save`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          drawing: dataUrl,
-          textElements,
-          arrows,
+          drawing: rasterData,
+          vectorData,
+          vectorElements,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error("Failed to save drawing");
+      }
+
+      console.log("Drawing saved successfully");
     } catch (error) {
-      console.error("Error auto-saving drawing:", error);
+      console.error("Error saving drawing:", error);
     }
   };
+
+  useEffect(() => {
+    if (vectorElements.length > 0) {
+      const timer = setTimeout(() => {
+        autoSaveDrawing();
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [vectorElements]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!databaseUserId) {
@@ -622,6 +715,21 @@ export default function Canvas() {
           mode: CanvasMode.Pencil,
           currentStroke: [{ x, y }],
         });
+
+        if (e.type === "mouseup") {
+          if (
+            canvasState.currentStroke &&
+            canvasState.currentStroke.length > 1
+          ) {
+            const newPath: VectorElement = {
+              type: "path",
+              points: canvasState.currentStroke,
+              color: "#000000",
+              width: 3,
+            };
+            setVectorElements((prev) => [...prev, newPath]);
+          }
+        }
         break;
 
       case CanvasMode.Rectangle:
@@ -765,32 +873,29 @@ export default function Canvas() {
     switch (canvasState.mode) {
       case CanvasMode.Pencil:
         if (canvasState.currentStroke && canvasState.currentStroke.length > 1) {
-          ctx.beginPath();
-          ctx.moveTo(
-            canvasState.currentStroke[0].x,
-            canvasState.currentStroke[0].y
-          );
-          for (let i = 1; i < canvasState.currentStroke.length; i++) {
-            ctx.lineTo(
-              canvasState.currentStroke[i].x,
-              canvasState.currentStroke[i].y
-            );
-          }
-          ctx.stroke();
+          const newPath: VectorElement = {
+            type: "path",
+            points: canvasState.currentStroke,
+            color: currentColor,
+            width: currentWidth,
+          };
+          setVectorElements((prev) => [...prev, newPath]);
           shouldSaveAndSync = true;
         }
         break;
 
       case CanvasMode.Rectangle:
         if (canvasState.origin && canvasState.currentPosition) {
-          ctx.beginPath();
-          ctx.rect(
-            canvasState.origin.x,
-            canvasState.origin.y,
-            canvasState.currentPosition.x - canvasState.origin.x,
-            canvasState.currentPosition.y - canvasState.origin.y
-          );
-          ctx.stroke();
+          const newRect: VectorElement = {
+            type: "rectangle",
+            x: canvasState.origin.x,
+            y: canvasState.origin.y,
+            width: canvasState.currentPosition.x - canvasState.origin.x,
+            height: canvasState.currentPosition.y - canvasState.origin.y,
+            color: currentColor,
+            strokeWidth: currentWidth,
+          };
+          setVectorElements((prev) => [...prev, newRect]);
           shouldSaveAndSync = true;
         }
         break;
@@ -801,57 +906,76 @@ export default function Canvas() {
             Math.pow(canvasState.currentPosition.x - canvasState.origin.x, 2) +
               Math.pow(canvasState.currentPosition.y - canvasState.origin.y, 2)
           );
-          ctx.beginPath();
-          ctx.arc(
-            canvasState.origin.x,
-            canvasState.origin.y,
+          const newCircle: VectorElement = {
+            type: "circle",
+            cx: canvasState.origin.x,
+            cy: canvasState.origin.y,
             radius,
-            0,
-            Math.PI * 2
-          );
-          ctx.stroke();
+            color: currentColor,
+            strokeWidth: currentWidth,
+          };
+          setVectorElements((prev) => [...prev, newCircle]);
           shouldSaveAndSync = true;
         }
         break;
 
       case CanvasMode.Triangle:
         if (canvasState.origin && canvasState.currentPosition) {
-          drawTriangle(ctx, canvasState.origin, canvasState.currentPosition);
+          const newTriangle: VectorElement = {
+            type: "triangle",
+            points: [
+              { x: canvasState.origin.x, y: canvasState.currentPosition.y },
+              canvasState.currentPosition,
+              {
+                x: (canvasState.origin.x + canvasState.currentPosition.x) / 2,
+                y: canvasState.origin.y,
+              },
+            ],
+            color: currentColor,
+            strokeWidth: currentWidth,
+          };
+          setVectorElements((prev) => [...prev, newTriangle]);
           shouldSaveAndSync = true;
         }
         break;
 
       case CanvasMode.Arrow:
         if (canvasState.start && canvasState.end) {
-          drawArrow(ctx, canvasState.start, canvasState.end);
-          setArrows((prev) => [
-            ...prev,
-            { start: canvasState.start!, end: canvasState.end! },
-          ]);
+          const newArrow: VectorElement = {
+            type: "arrow",
+            start: canvasState.start,
+            end: canvasState.end,
+            color: currentColor,
+            strokeWidth: currentWidth,
+          };
+          setVectorElements((prev) => [...prev, newArrow]);
           shouldSaveAndSync = true;
         }
         break;
 
-      case CanvasMode.Eraser:
-        shouldSaveAndSync = true;
-        // TIDAK MENGUBAH MODE DI SINI,
-        // karena kita ingin tetap di mode Eraser.
+      case CanvasMode.Text:
+        if (textInput.trim() !== "" && textInputPos) {
+          const newText: VectorElement = {
+            type: "text",
+            content: textInput,
+            x: textInputPos.x,
+            y: textInputPos.y,
+            color: currentColor,
+          };
+          setVectorElements((prev) => [...prev, newText]);
+          shouldSaveAndSync = true;
+        }
         break;
     }
 
     setIsDrawing(false);
-
-    // --- BARIS PERUBAHAN UTAMA DI SINI ---
-    // Hanya atur mode kembali ke CanvasMode.None jika bukan Eraser
-    if (canvasState.mode !== CanvasMode.Eraser) {
-      setCanvasState({ mode: CanvasMode.None });
-    }
-    // ------------------------------------
-
     if (shouldSaveAndSync) {
       saveToHistory();
+      redrawCanvas();
       syncCanvasState();
-      autoSaveDrawing();
+      autoSaveDrawing().then(() => {
+        console.log("Drawing saved immediately");
+      });
     }
   };
 
@@ -910,18 +1034,7 @@ export default function Canvas() {
           onChange={(e) => setTextInput(e.target.value)}
           onBlur={() => {
             if (textInput.trim() !== "") {
-              const newTextElement = {
-                text: textInput,
-                position: textInputPos,
-              };
-              setTextElements((prev) => [...prev, newTextElement]);
-              saveToHistory();
-              socketRef.current?.emit("textAdded", {
-                boardId,
-                textElement: newTextElement,
-                userId: databaseUserId,
-              });
-              autoSaveDrawing();
+              endDrawing(); // Ini akan menangani penyimpanan text
             }
             setTextInput("");
             setTextInputPos(null);
@@ -951,11 +1064,16 @@ export default function Canvas() {
         undo={undo}
         redo={redo}
         eraserSize={eraserSize}
-        setEraserSize={setEraserSize} currentColor={""} setCurrentColor={function (color: string): void {
+        setEraserSize={setEraserSize}
+        currentColor={""}
+        setCurrentColor={function (color: string): void {
           throw new Error("Function not implemented.");
-        } } currentWidth={0} setCurrentWidth={function (width: number): void {
+        }}
+        currentWidth={0}
+        setCurrentWidth={function (width: number): void {
           throw new Error("Function not implemented.");
-        } }      />
+        }}
+      />
       <Info />
       <Participans />
     </main>
