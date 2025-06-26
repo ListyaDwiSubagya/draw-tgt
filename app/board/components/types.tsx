@@ -46,18 +46,18 @@ export type CanvasState =
     }
   | {
       mode: CanvasMode.Triangle;
-      origin?: Point; // Tambahkan ini
-      currentPosition?: Point; // Ini sudah ada, tapi pastikan
+      origin?: Point; 
+      currentPosition?: Point; 
       currentStroke?: Stroke;
     };
 
 export interface ToolbarProps {
   canvasState: CanvasState;
   setCanvasState: (state: CanvasState) => void;
-  currentColor: string; // Tambahkan ini
-  setCurrentColor: (color: string) => void; // Tambahkan ini
-  currentWidth: number; // Tambahkan ini
-  setCurrentWidth: (width: number) => void; // Tambahkan ini
+  currentColor: string; 
+  setCurrentColor: (color: string) => void; 
+  currentWidth: number; 
+  setCurrentWidth: (width: number) => void; 
 }
 
 export type VectorElement =

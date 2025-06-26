@@ -15,7 +15,6 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-md shadow-md flex flex-col gap-2">
-      {/* Text Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Text
@@ -28,7 +27,6 @@ export default function Toolbar({
         <TextCursorInput size={20} />
       </button>
 
-      {/* Arrow Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Arrow
@@ -41,7 +39,6 @@ export default function Toolbar({
         <ArrowRight size={20} />
       </button>
 
-      {/* Pencil Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Pencil
@@ -59,7 +56,6 @@ export default function Toolbar({
         <PencilLine size={20} />
       </button>
 
-      {/* Rectangle Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Rectangle
@@ -72,7 +68,6 @@ export default function Toolbar({
         <Square size={20} />
       </button>
 
-      {/* Circle Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Circle
@@ -85,7 +80,6 @@ export default function Toolbar({
         <Circle size={20} />
       </button>
 
-      {/* Triangle Tool */}
       <button
         className={`p-2 rounded-md ${
           canvasState.mode === CanvasMode.Triangle
@@ -97,7 +91,6 @@ export default function Toolbar({
       >
         <Triangle size={20} />
       </button>
-      {/* Divider */}
       <div className="border-t my-1"></div>
     </div>
   );

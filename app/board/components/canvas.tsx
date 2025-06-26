@@ -302,7 +302,22 @@ export default function Canvas() {
     if (isDrawing && canvasState.mode !== CanvasMode.None) {
       ctx.strokeStyle = currentColor;
       ctx.lineWidth = currentWidth;
+      if (
+        canvasState.mode === CanvasMode.Pencil &&
+        canvasState.currentStroke &&
+        canvasState.currentStroke.length > 1
+      ) {
+        ctx.beginPath();
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = currentWidth;
 
+        const points = canvasState.currentStroke;
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
+      }
       if (
         (canvasState.mode === CanvasMode.Rectangle ||
           canvasState.mode === CanvasMode.Circle ||
@@ -362,34 +377,13 @@ export default function Canvas() {
     redrawCanvas();
   }, [redrawCanvas]);
 
-  const applyRemotePencilStroke = useCallback(
-    (stroke: Point[]) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx || stroke.length < 2) return;
-
-      redrawCanvas();
-
-      ctx.beginPath();
-      ctx.moveTo(stroke[0].x, stroke[0].y);
-      for (let i = 1; i < stroke.length; i++) {
-        ctx.lineTo(stroke[i].x, stroke[i].y);
-      }
-      ctx.stroke();
-
-      setCanvasState((prev) => ({
-        ...prev,
-        currentStroke: [...(prev.currentStroke || []), ...stroke],
-      }));
-    },
-    [redrawCanvas]
-  );
-
   const drawRemoteShapePreview = useCallback(
     (
-      tool: CanvasMode.Rectangle | CanvasMode.Circle | CanvasMode.Triangle,
+      tool:
+        | CanvasMode.Rectangle
+        | CanvasMode.Circle
+        | CanvasMode.Triangle
+        | CanvasMode.Pencil,
       origin: Point,
       currentPosition: Point
     ) => {
@@ -399,9 +393,13 @@ export default function Canvas() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      redrawCanvas();
+      drawVectorShapes(ctx, vectorElements);
 
+      ctx.save();
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = currentWidth;
       ctx.beginPath();
+
       if (tool === CanvasMode.Rectangle) {
         ctx.rect(
           origin.x,
@@ -417,10 +415,15 @@ export default function Canvas() {
         ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
       } else if (tool === CanvasMode.Triangle) {
         drawTriangle(ctx, origin, currentPosition);
+      } else if (tool === CanvasMode.Pencil) {
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(currentPosition.x, currentPosition.y);
       }
+
       ctx.stroke();
+      ctx.restore();
     },
-    [redrawCanvas]
+    [vectorElements, currentWidth]
   );
 
   const applyRemoteShape = useCallback(
@@ -458,73 +461,6 @@ export default function Canvas() {
     },
     [redrawCanvas]
   );
-
-  const exportAsSVG = useCallback((): string => {
-    const canvas = canvasRef.current;
-    if (!canvas) return "";
-
-    const svgWidth = canvas.width;
-    const svgHeight = canvas.height;
-
-    let svgContent = `
-    <svg width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="white"/>
-    `;
-
-    vectorElements.forEach((element) => {
-      switch (element.type) {
-        case "path":
-          svgContent += `<path d="M ${element.points
-            .map((p) => `${p.x} ${p.y}`)
-            .join(" L ")}" stroke="${element.color}" stroke-width="${
-            element.width
-          }" fill="none"/>`;
-          break;
-
-        case "rectangle":
-          svgContent += `<rect x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" stroke="${element.color}" stroke-width="${element.strokeWidth}" fill="none"/>`;
-          break;
-
-        case "circle":
-          svgContent += `<circle cx="${element.cx}" cy="${element.cy}" r="${element.radius}" stroke="${element.color}" stroke-width="${element.strokeWidth}" fill="none"/>`;
-          break;
-
-        case "triangle":
-          svgContent += `<polygon points="${element.points
-            .map((p) => `${p.x},${p.y}`)
-            .join(" ")}" stroke="${element.color}" stroke-width="${
-            element.strokeWidth
-          }" fill="none"/>`;
-          break;
-
-        case "text":
-          svgContent += `<text x="${element.x}" y="${element.y}" fill="${element.color}" font-family="Arial" font-size="16">${element.content}</text>`;
-          break;
-
-        case "arrow":
-          svgContent += `<line x1="${element.start.x}" y1="${element.start.y}" x2="${element.end.x}" y2="${element.end.y}" stroke="${element.color}" stroke-width="${element.strokeWidth}"/>`;
-
-          const angle = Math.atan2(
-            element.end.y - element.start.y,
-            element.end.x - element.start.x
-          );
-          const arrowHead1 = {
-            x: element.end.x - 15 * Math.cos(angle - Math.PI / 6),
-            y: element.end.y - 15 * Math.sin(angle - Math.PI / 6),
-          };
-          const arrowHead2 = {
-            x: element.end.x - 15 * Math.cos(angle + Math.PI / 6),
-            y: element.end.y - 15 * Math.sin(angle + Math.PI / 6),
-          };
-
-          svgContent += `<polygon points="${element.end.x},${element.end.y} ${arrowHead1.x},${arrowHead1.y} ${arrowHead2.x},${arrowHead2.y}" fill="${element.color}"/>`;
-          break;
-      }
-    });
-
-    svgContent += "</svg>";
-    return svgContent;
-  }, [vectorElements]);
 
   const syncCanvasState = useCallback(() => {
     if (isSyncing || !socketRef.current || !boardId || !databaseUserId) return;
@@ -677,7 +613,6 @@ export default function Canvas() {
           currentPosition: { x, y },
         }));
 
-        // Emit preview ke user lain
         socketRef.current?.emit("shapePreview", {
           boardId,
           tool: canvasState.mode,
