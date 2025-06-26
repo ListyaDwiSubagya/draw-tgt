@@ -39,10 +39,6 @@ io.on("connection", (socket) => {
         },
       });
 
-      console.log("Board found:", board);
-      console.log("Board Organization:", board?.organization);
-      console.log("Organization Members:", board?.organization?.members);
-
       if (!board) {
         socket.emit("error", "Board not found.");
         socket.disconnect();
@@ -73,24 +69,55 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("drawing", ({ boardId, drawingData, userId }) => {
-    io.to(boardId).emit("drawingChange", { drawingData, userId });
+  socket.on("pencilStroke", ({ boardId, stroke, userId }) => {
+    io.to(boardId).emit("pencilStroke", { stroke, userId });
   });
+
+  socket.on(
+    "shapePreview",
+    ({ boardId, tool, origin, currentPosition, userId }) => {
+      io.to(boardId).emit("shapePreview", {
+        tool,
+        origin,
+        currentPosition,
+        userId,
+      });
+    }
+  );
+
+  socket.on(
+    "shapeFinal",
+    ({ boardId, tool, origin, currentPosition, userId }) => {
+      io.to(boardId).emit("shapeFinal", {
+        tool,
+        origin,
+        currentPosition,
+        userId,
+      });
+    }
+  );
 
   socket.on("textAdded", ({ boardId, textElement, userId }) => {
     io.to(boardId).emit("textAdded", { textElement, userId });
   });
 
-  socket.on("erasure", ({ boardId, erasedArea, userId }) => {
-    io.to(boardId).emit("erasure", { erasedArea, userId });
+  socket.on("shapeAdded", ({ boardId, shape, userId }) => {
+    io.to(boardId).emit("shapeAdded", { shape, userId });
   });
 
-  socket.on("undo", ({ boardId, userId }) => {
-    io.to(boardId).emit("undo", userId);
+  socket.on("cursorMove", ({ boardId, position, userId }) => {
+    io.to(boardId).emit("cursorMove", { position, userId });
   });
 
-  socket.on("redo", ({ boardId, userId }) => {
-    io.to(boardId).emit("redo", userId);
+  socket.on("drawing", ({ boardId, vectorElements, userId }) => {
+    console.log(
+      `Received full drawing sync from ${userId} on board ${boardId}`
+    );
+    socket.to(boardId).emit("vectorSync", { vectorElements, userId });
+  });
+
+  socket.on("vectorSync", ({ boardId, vectorElements, userId }) => {
+    io.to(boardId).emit("vectorSync", { vectorElements, userId });
   });
 
   socket.on("disconnect", () => {
