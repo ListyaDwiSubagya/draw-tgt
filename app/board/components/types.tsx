@@ -61,10 +61,6 @@ export type CanvasState =
 export interface ToolbarProps {
   canvasState: CanvasState;
   setCanvasState: (state: CanvasState) => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  undo: () => void;
-  redo: () => void;
   currentColor: string; // Tambahkan ini
   setCurrentColor: (color: string) => void; // Tambahkan ini
   currentWidth: number; // Tambahkan ini

@@ -25,8 +25,6 @@ export default function Canvas() {
     mode: CanvasMode.None,
   });
   const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingHistory, setDrawingHistory] = useState<ImageData[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
   const [textElements, setTextElements] = useState<
     { text: string; position: Point }[]
   >([]);
@@ -65,7 +63,7 @@ export default function Canvas() {
   useEffect(() => {
     if (!boardId || !databaseUserId) return;
 
-    const socket = io("http://10.132.0.186:4000");
+    const socket = io("http://10.132.1.253:4000");
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -109,6 +107,12 @@ export default function Canvas() {
       }
     });
 
+    socket.on("shapeAdded", ({ shape, userId: remoteUserId }) => {
+      if (remoteUserId !== databaseUserId) {
+        setVectorElements((prev) => [...prev, shape]);
+      }
+    });
+
     socket.on("erasure", ({ erasedArea, userId: remoteUserId }) => {
       if (remoteUserId !== databaseUserId) {
         applyRemoteErasure(erasedArea);
@@ -129,21 +133,6 @@ export default function Canvas() {
       }
     });
 
-    socket.on("undo", (remoteUserId) => {
-      if (remoteUserId !== databaseUserId && historyIndex > 0) {
-        setHistoryIndex((prev) => prev - 1);
-      }
-    });
-
-    socket.on("redo", (remoteUserId) => {
-      if (
-        remoteUserId !== databaseUserId &&
-        historyIndex < drawingHistory.length - 1
-      ) {
-        setHistoryIndex((prev) => prev + 1);
-      }
-    });
-
     socket.on("userJoined", (joinedUserId) => {
       console.log(`User ${joinedUserId} joined the board`);
     });
@@ -159,7 +148,7 @@ export default function Canvas() {
     return () => {
       socket.disconnect();
     };
-  }, [boardId, databaseUserId, historyIndex, drawingHistory.length]);
+  }, [boardId, databaseUserId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -320,27 +309,6 @@ export default function Canvas() {
     return canvas.toDataURL("image/png");
   };
 
-  const saveToHistory = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    try {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      if (imageData) {
-        setDrawingHistory((prev) => [
-          ...prev.slice(0, historyIndex + 1),
-          imageData,
-        ]);
-        setHistoryIndex((prev) => prev + 1);
-      }
-    } catch (error) {
-      console.error("Error saving to history:", error);
-    }
-  }, [historyIndex]);
-
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -349,13 +317,6 @@ export default function Canvas() {
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (historyIndex >= 0 && historyIndex < drawingHistory.length) {
-      const imageData = drawingHistory[historyIndex];
-      if (isValidImageData(imageData)) {
-        ctx.putImageData(imageData, 0, 0);
-      }
-    }
 
     vectorElements.forEach((element) => {
       ctx.strokeStyle = element.color;
@@ -411,8 +372,6 @@ export default function Canvas() {
       ctx.fill();
     });
   }, [
-    drawingHistory,
-    historyIndex,
     vectorElements,
     remoteCursors,
     currentWidth,
@@ -438,11 +397,10 @@ export default function Canvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0);
         URL.revokeObjectURL(url);
-        saveToHistory();
       };
       img.src = url;
     },
-    [saveToHistory]
+    []
   );
 
   const applyRemotePencilStroke = useCallback(
@@ -538,10 +496,8 @@ export default function Canvas() {
         drawTriangle(ctx, origin, currentPosition);
       }
       ctx.stroke();
-
-      saveToHistory();
     },
-    [redrawCanvas, saveToHistory]
+    [redrawCanvas]
   );
 
   const exportAsSVG = useCallback((): string => {
@@ -626,10 +582,8 @@ export default function Canvas() {
       ctx.arc(erasedArea.x, erasedArea.y, erasedArea.size, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalCompositeOperation = "source-over";
-
-      saveToHistory();
     },
-    [redrawCanvas, saveToHistory]
+    [redrawCanvas]
   );
 
   const syncCanvasState = useCallback(() => {
@@ -645,12 +599,12 @@ export default function Canvas() {
 
     socketRef.current.emit("drawing", {
       boardId,
-      drawingData: svgData, 
+      drawingData: svgData,
       userId: databaseUserId,
     });
 
     autoSaveDrawing().finally(() => setIsSyncing(false));
-  }, [boardId, databaseUserId, isSyncing, exportAsSVG]); 
+  }, [boardId, databaseUserId, isSyncing, exportAsSVG]);
 
   const autoSaveDrawing = async () => {
     try {
@@ -970,7 +924,6 @@ export default function Canvas() {
 
     setIsDrawing(false);
     if (shouldSaveAndSync) {
-      saveToHistory();
       redrawCanvas();
       syncCanvasState();
       autoSaveDrawing().then(() => {
@@ -979,37 +932,11 @@ export default function Canvas() {
     }
   };
 
-  const undo = useCallback(() => {
-    if (historyIndex <= 0) return;
-
-    setHistoryIndex((prev) => prev - 1);
-    socketRef.current?.emit("undo", databaseUserId);
-    syncCanvasState();
-    autoSaveDrawing();
-  }, [historyIndex, syncCanvasState, autoSaveDrawing, databaseUserId]);
-
-  const redo = useCallback(() => {
-    if (historyIndex >= drawingHistory.length - 1) return;
-
-    setHistoryIndex((prev) => prev + 1);
-    socketRef.current?.emit("redo", databaseUserId);
-    syncCanvasState();
-    autoSaveDrawing();
-  }, [
-    drawingHistory.length,
-    historyIndex,
-    syncCanvasState,
-    autoSaveDrawing,
-    databaseUserId,
-  ]);
-
   useEffect(() => {
     redrawCanvas();
   }, [
     canvasState.currentStroke,
     canvasState.currentPosition,
-    drawingHistory,
-    historyIndex,
     textElements,
     arrows,
     remoteCursors,
@@ -1034,7 +961,7 @@ export default function Canvas() {
           onChange={(e) => setTextInput(e.target.value)}
           onBlur={() => {
             if (textInput.trim() !== "") {
-              endDrawing(); // Ini akan menangani penyimpanan text
+              endDrawing();
             }
             setTextInput("");
             setTextInputPos(null);
@@ -1059,10 +986,6 @@ export default function Canvas() {
       <Toolbar
         canvasState={canvasState}
         setCanvasState={setCanvasState}
-        canUndo={historyIndex > 0}
-        canRedo={historyIndex < drawingHistory.length - 1}
-        undo={undo}
-        redo={redo}
         eraserSize={eraserSize}
         setEraserSize={setEraserSize}
         currentColor={""}

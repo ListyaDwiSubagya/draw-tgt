@@ -3,8 +3,6 @@ import {
   PencilLine,
   Square,
   Circle,
-  Undo2,
-  Redo2,
   TextCursorInput,
   ArrowRight,
   Eraser,
@@ -15,10 +13,6 @@ import { CanvasMode, ToolbarProps } from "./types";
 export default function Toolbar({
   canvasState,
   setCanvasState,
-  canUndo,
-  canRedo,
-  undo,
-  redo,
 }: ToolbarProps) {
   return (
     <div className="absolute left-4 top-1/2 -translate-y-1/2 bg-white p-2 rounded-md shadow-md flex flex-col gap-2">
@@ -125,26 +119,6 @@ export default function Toolbar({
 
       {/* Divider */}
       <div className="border-t my-1"></div>
-
-      {/* Undo Button */}
-      <button
-        className="p-2 rounded-md bg-white hover:bg-gray-100 disabled:opacity-50"
-        onClick={undo}
-        disabled={!canUndo}
-        title="Undo (Ctrl+Z)"
-      >
-        <Undo2 size={20} />
-      </button>
-
-      {/* Redo Button */}
-      <button
-        className="p-2 rounded-md bg-white hover:bg-gray-100 disabled:opacity-50"
-        onClick={redo}
-        disabled={!canRedo}
-        title="Redo (Ctrl+Y)"
-      >
-        <Redo2 size={20} />
-      </button>
     </div>
   );
 }
