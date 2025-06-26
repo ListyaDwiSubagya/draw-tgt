@@ -5,7 +5,6 @@ import {
   Circle,
   TextCursorInput,
   ArrowRight,
-  Eraser,
   Triangle,
 } from "lucide-react";
 import { CanvasMode, ToolbarProps } from "./types";
@@ -98,25 +97,6 @@ export default function Toolbar({
       >
         <Triangle size={20} />
       </button>
-
-      {/* Eraser Tool - Simplified */}
-      <button
-        className={`p-2 rounded-md ${
-          canvasState.mode === CanvasMode.Eraser
-            ? "bg-blue-500 text-white"
-            : "bg-white hover:bg-gray-100"
-        }`}
-        onClick={() =>
-          setCanvasState({
-            mode: CanvasMode.Eraser,
-            eraserSize: 20, // Fixed size
-          })
-        }
-        title="Eraser (E)"
-      >
-        <Eraser size={20} />
-      </button>
-
       {/* Divider */}
       <div className="border-t my-1"></div>
     </div>

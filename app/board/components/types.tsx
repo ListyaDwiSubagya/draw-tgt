@@ -5,7 +5,6 @@ export enum CanvasMode {
   Circle = "Circle",
   Text = "Text",
   Arrow = "Arrow",
-  Eraser = "Eraser",
   Triangle = "Triangle",
 }
 
@@ -46,12 +45,6 @@ export type CanvasState =
       currentPosition?: Point;
     }
   | {
-      mode: CanvasMode.Eraser;
-      eraserSize?: number;
-      currentStroke?: Stroke;
-      currentPosition?: Point;
-    }
-  | {
       mode: CanvasMode.Triangle;
       origin?: Point; // Tambahkan ini
       currentPosition?: Point; // Ini sudah ada, tapi pastikan
@@ -65,8 +58,6 @@ export interface ToolbarProps {
   setCurrentColor: (color: string) => void; // Tambahkan ini
   currentWidth: number; // Tambahkan ini
   setCurrentWidth: (width: number) => void; // Tambahkan ini
-  eraserSize?: number; // Opsional jika masih digunakan
-  setEraserSize?: (size: number) => void; // Opsional jika masih digunakan
 }
 
 export type VectorElement =

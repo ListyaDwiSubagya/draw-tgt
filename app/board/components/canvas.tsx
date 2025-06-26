@@ -15,12 +15,11 @@ export default function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const { userId: clerkId } = useAuth();
-  const { user } = useUser();
+  useUser();
   const [databaseUserId, setDatabaseUserId] = useState<string | null>(null);
-  const [currentColor, setCurrentColor] = useState("#000000");
-  const [currentWidth, setCurrentWidth] = useState(3);
+  const [currentColor] = useState("#000000");
+  const [currentWidth] = useState(3);
 
-  // State declarations
   const [canvasState, setCanvasState] = useState<CanvasState>({
     mode: CanvasMode.None,
   });
@@ -29,8 +28,7 @@ export default function Canvas() {
     { text: string; position: Point }[]
   >([]);
   const [vectorElements, setVectorElements] = useState<VectorElement[]>([]);
-  const [arrows, setArrows] = useState<{ start: Point; end: Point }[]>([]);
-  const [eraserSize, setEraserSize] = useState(20);
+  const [arrows] = useState<{ start: Point; end: Point }[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [textInputPos, setTextInputPos] = useState<Point | null>(null);
@@ -110,12 +108,6 @@ export default function Canvas() {
     socket.on("shapeAdded", ({ shape, userId: remoteUserId }) => {
       if (remoteUserId !== databaseUserId) {
         setVectorElements((prev) => [...prev, shape]);
-      }
-    });
-
-    socket.on("erasure", ({ erasedArea, userId: remoteUserId }) => {
-      if (remoteUserId !== databaseUserId) {
-        applyRemoteErasure(erasedArea);
       }
     });
 
@@ -204,15 +196,6 @@ export default function Canvas() {
     fetchVectorShapes();
   }, [boardId]);
 
-  const isValidImageData = (data: any): data is ImageData => {
-    return (
-      data &&
-      data.data instanceof Uint8ClampedArray &&
-      typeof data.width === "number" &&
-      typeof data.height === "number"
-    );
-  };
-
   function drawVectorShapes(ctx: CanvasRenderingContext2D, elements: any[]) {
     elements.forEach((element) => {
       ctx.strokeStyle = element.color || "black";
@@ -268,7 +251,7 @@ export default function Canvas() {
     ctx: CanvasRenderingContext2D,
     start: Point,
     end: Point,
-    color?: any
+    _color?: any
   ) => {
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
@@ -371,37 +354,30 @@ export default function Canvas() {
       ctx.arc(position.x, position.y, 5, 0, Math.PI * 2);
       ctx.fill();
     });
-  }, [
-    vectorElements,
-    remoteCursors,
-    currentWidth,
-  ]);
+  }, [vectorElements, remoteCursors, currentWidth]);
 
   useEffect(() => {
     redrawCanvas();
   }, [redrawCanvas]);
 
-  const applyRemoteDrawing = useCallback(
-    (svgData: string) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+  const applyRemoteDrawing = useCallback((svgData: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-      const img = new Image();
-      const svgBlob = new Blob([svgData], { type: "image/svg+xml" });
-      const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(svgBlob);
 
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
-    },
-    []
-  );
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }, []);
 
   const applyRemotePencilStroke = useCallback(
     (stroke: Point[]) => {
@@ -566,25 +542,6 @@ export default function Canvas() {
     svgContent += "</svg>";
     return svgContent;
   }, [vectorElements]);
-
-  const applyRemoteErasure = useCallback(
-    (erasedArea: { x: number; y: number; size: number }) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      redrawCanvas();
-
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath();
-      ctx.arc(erasedArea.x, erasedArea.y, erasedArea.size, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = "source-over";
-    },
-    [redrawCanvas]
-  );
 
   const syncCanvasState = useCallback(() => {
     if (isSyncing || !socketRef.current || !boardId || !databaseUserId) return;
@@ -783,34 +740,6 @@ export default function Canvas() {
           end: { x, y },
         }));
         break;
-
-      case CanvasMode.Eraser:
-        const erasedX = x;
-        const erasedY = y;
-        const currentEraserSize = canvasState.eraserSize || eraserSize;
-
-        const newTextElements = textElements.filter(({ position }) => {
-          const dx = position.x - erasedX;
-          const dy = position.y - erasedY;
-          return Math.sqrt(dx * dx + dy * dy) > currentEraserSize;
-        });
-
-        if (newTextElements.length !== textElements.length) {
-          setTextElements(newTextElements);
-        }
-
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.beginPath();
-        ctx.arc(erasedX, erasedY, currentEraserSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = "source-over";
-
-        socketRef.current?.emit("erasure", {
-          boardId,
-          erasedArea: { x: erasedX, y: erasedY, size: currentEraserSize },
-          userId: databaseUserId,
-        });
-        break;
     }
   };
 
@@ -986,14 +915,12 @@ export default function Canvas() {
       <Toolbar
         canvasState={canvasState}
         setCanvasState={setCanvasState}
-        eraserSize={eraserSize}
-        setEraserSize={setEraserSize}
         currentColor={""}
-        setCurrentColor={function (color: string): void {
+        setCurrentColor={function (): void {
           throw new Error("Function not implemented.");
         }}
         currentWidth={0}
-        setCurrentWidth={function (width: number): void {
+        setCurrentWidth={function (): void {
           throw new Error("Function not implemented.");
         }}
       />
